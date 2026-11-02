@@ -44,8 +44,9 @@ from rich.text import Text
 if TYPE_CHECKING:
     import PIL.Image
 
-from .agent_types import AgentAudio, AgentImage, handle_agent_output_types
+from .agent_types import handle_agent_output_types
 from .default_tools import TOOL_MAPPING, FinalAnswerTool
+from .gate import ToolExecutionGate, ToolPermissionPolicy
 from .local_python_executor import BASE_BUILTIN_MODULES, LocalPythonExecutor, PythonExecutor, fix_final_answer_code
 from .memory import (
     ActionStep,
@@ -78,14 +79,14 @@ from .monitoring import (
     TokenUsage,
 )
 from .remote_executors import BlaxelExecutor, DockerExecutor, E2BExecutor, ModalExecutor
-from .tools import BaseTool, Tool, validate_tool_arguments
+from .tools import BaseTool, Tool
 from .utils import (
     AgentError,
     AgentExecutionError,
     AgentGenerationError,
     AgentMaxStepsError,
     AgentParsingError,
-    AgentToolCallError,
+    AgentToolCallError,  # noqa: F401 - re-exported for backwards compatibility
     AgentToolExecutionError,
     create_agent_gradio_app_template,
     extract_code_from_text,
@@ -1225,6 +1226,8 @@ class ToolCallingAgent(MultiStepAgent):
         max_tool_threads (`int`, *optional*): Maximum number of threads for parallel tool calls.
             Higher values increase concurrency but resource usage as well.
             Defaults to `ThreadPoolExecutor`'s default.
+        tool_permissions ([`~gate.ToolPermissionPolicy`], *optional*): Permission policy applied to every tool call.
+            Defaults to allowing every tool.
         **kwargs: Additional keyword arguments.
     """
 
@@ -1236,6 +1239,7 @@ class ToolCallingAgent(MultiStepAgent):
         planning_interval: int | None = None,
         stream_outputs: bool = False,
         max_tool_threads: int | None = None,
+        tool_permissions: ToolPermissionPolicy | None = None,
         **kwargs,
     ):
         prompt_templates = prompt_templates or yaml.safe_load(
@@ -1256,6 +1260,14 @@ class ToolCallingAgent(MultiStepAgent):
             )
         # Tool calling setup
         self.max_tool_threads = max_tool_threads
+        # Every tool call is routed through this execution gate.
+        self.tool_execution_gate = ToolExecutionGate(
+            tools=self.tools,
+            managed_agents=self.managed_agents,
+            permissions=tool_permissions,
+            state=self.state,
+            logger=self.logger,
+        )
 
     @property
     def tools_and_managed_agents(self):
@@ -1387,29 +1399,17 @@ class ToolCallingAgent(MultiStepAgent):
                 Panel(Text(f"Calling tool: '{tool_name}' with arguments: {tool_arguments}")),
                 level=LogLevel.INFO,
             )
-            tool_call_result = self.execute_tool_call(tool_name, tool_arguments)
-            tool_call_result_type = type(tool_call_result)
-            if tool_call_result_type in [AgentImage, AgentAudio]:
-                if tool_call_result_type == AgentImage:
-                    observation_name = "image.png"
-                elif tool_call_result_type == AgentAudio:
-                    observation_name = "audio.mp3"
-                # TODO: tool_call_result naming could allow for different names of same type
-                self.state[observation_name] = tool_call_result
-                observation = f"Stored '{observation_name}' in memory."
-            else:
-                observation = str(tool_call_result).strip()
+            result = self.tool_execution_gate.execute(tool_call)
             self.logger.log(
-                f"Observations: {observation.replace('[', '|')}",  # escape potential rich-tag-like components
+                f"Observations: {result.observation.replace('[', '|')}",  # escape potential rich-tag-like components
                 level=LogLevel.INFO,
             )
-            is_final_answer = tool_name == "final_answer"
 
             return ToolOutput(
-                id=tool_call.id,
-                output=tool_call_result,
-                is_final_answer=is_final_answer,
-                observation=observation,
+                id=result.tool_call_id,
+                output=result.output,
+                is_final_answer=result.is_final_answer,
+                observation=result.observation,
                 tool_call=tool_call,
             )
 
@@ -1441,65 +1441,20 @@ class ToolCallingAgent(MultiStepAgent):
             memory_step.observations.rstrip("\n") if memory_step.observations else memory_step.observations
         )
 
-    def _substitute_state_variables(self, arguments: dict[str, str] | str) -> dict[str, Any] | str:
-        """Replace string values in arguments with their corresponding state values if they exist."""
-        if isinstance(arguments, dict):
-            return {
-                key: self.state.get(value, value) if isinstance(value, str) else value
-                for key, value in arguments.items()
-            }
-        return arguments
-
     def execute_tool_call(self, tool_name: str, arguments: dict[str, str] | str) -> Any:
         """
         Execute a tool or managed agent with the provided arguments.
 
-        The arguments are replaced with the actual values from the state if they refer to state variables.
+        The call is routed through [`~gate.ToolExecutionGate`], which checks the tool's existence, validates the
+        arguments, applies the permission policy, and normalizes the result. Arguments referring to state variables
+        are replaced with their actual values from the state.
 
         Args:
             tool_name (`str`): Name of the tool or managed agent to execute.
             arguments (dict[str, str] | str): Arguments passed to the tool call.
         """
-        # Check if the tool exists
-        available_tools = {**self.tools, **self.managed_agents}
-        if tool_name not in available_tools:
-            raise AgentToolExecutionError(
-                f"Unknown tool {tool_name}, should be one of: {', '.join(available_tools)}.", self.logger
-            )
-
-        # Get the tool and substitute state variables in arguments
-        tool = available_tools[tool_name]
-        arguments = self._substitute_state_variables(arguments)
-        is_managed_agent = tool_name in self.managed_agents
-
-        try:
-            validate_tool_arguments(tool, arguments)
-        except (ValueError, TypeError) as e:
-            raise AgentToolCallError(str(e), self.logger) from e
-        except Exception as e:
-            error_msg = f"Error executing tool '{tool_name}' with arguments {str(arguments)}: {type(e).__name__}: {e}"
-            raise AgentToolExecutionError(error_msg, self.logger) from e
-
-        try:
-            # Call tool with appropriate arguments
-            if isinstance(arguments, dict):
-                return tool(**arguments) if is_managed_agent else tool(**arguments, sanitize_inputs_outputs=True)
-            else:
-                return tool(arguments) if is_managed_agent else tool(arguments, sanitize_inputs_outputs=True)
-
-        except Exception as e:
-            # Handle execution errors
-            if is_managed_agent:
-                error_msg = (
-                    f"Error executing request to team member '{tool_name}' with arguments {str(arguments)}: {e}\n"
-                    "Please try again or request to another team member"
-                )
-            else:
-                error_msg = (
-                    f"Error executing tool '{tool_name}' with arguments {str(arguments)}: {type(e).__name__}: {e}\n"
-                    "Please try again or use another tool"
-                )
-            raise AgentToolExecutionError(error_msg, self.logger) from e
+        result = self.tool_execution_gate.execute(ToolCall(name=tool_name, arguments=arguments, id=""))
+        return result.output
 
 
 class CodeAgent(MultiStepAgent):
