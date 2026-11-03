@@ -20,6 +20,7 @@ from .agent_types import *  # noqa: I001
 from .agents import *  # Above noqa avoids a circular dependency due to cli.py
 from .audit import *
 from .checkpoint import *
+from .completion import *
 from .default_tools import *
 from .gate import *
 from .gradio_ui import *
