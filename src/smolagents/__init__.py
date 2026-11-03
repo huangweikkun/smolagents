@@ -18,6 +18,7 @@ __version__ = "1.27.0.dev0"
 
 from .agent_types import *  # noqa: I001
 from .agents import *  # Above noqa avoids a circular dependency due to cli.py
+from .audit import *
 from .default_tools import *
 from .gate import *
 from .gradio_ui import *
