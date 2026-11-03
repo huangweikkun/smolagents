@@ -79,6 +79,7 @@ from .monitoring import (
     TokenUsage,
 )
 from .remote_executors import BlaxelExecutor, DockerExecutor, E2BExecutor, ModalExecutor
+from .state_store import ExecutionStatus, StateStore
 from .tools import BaseTool, Tool
 from .utils import (
     AgentError,
@@ -488,6 +489,18 @@ You have been provided with these additional arguments, that you can access dire
         )
         self.memory.steps.append(TaskStep(task=self.task, task_images=images))
 
+        if getattr(self, "state_store", None) is not None:
+            self.state_store.start(
+                task=self.task,
+                agent_class=type(self).__name__,
+                agent_name=self.name,
+                model_id=getattr(self.model, "model_id", None),
+                max_steps=max_steps,
+                planning_interval=self.planning_interval,
+                additional_args=additional_args,
+                messages=self.write_memory_to_messages(),
+            )
+
         if getattr(self, "python_executor", None):
             self.python_executor.send_variables(variables=self.state)
             self.python_executor.send_tools({**self.tools, **self.managed_agents})
@@ -543,73 +556,90 @@ You have been provided with these additional arguments, that you can access dire
     ) -> Generator[ActionStep | PlanningStep | FinalAnswerStep | ChatMessageStreamDelta]:
         self.step_number = 1
         returned_final_answer = False
-        while not returned_final_answer and self.step_number <= max_steps:
-            if self.interrupt_switch:
-                raise AgentError("Agent interrupted.", self.logger)
+        try:
+            while not returned_final_answer and self.step_number <= max_steps:
+                if self.interrupt_switch:
+                    raise AgentError("Agent interrupted.", self.logger)
 
-            # Run a planning step if scheduled
-            if self.planning_interval is not None and (
-                self.step_number == 1 or (self.step_number - 1) % self.planning_interval == 0
-            ):
-                planning_start_time = time.time()
-                planning_step = None
-                for element in self._generate_planning_step(
-                    task, is_first_step=len(self.memory.steps) == 1, step=self.step_number
-                ):  # Don't use the attribute step_number here, because there can be steps from previous runs
-                    yield element
-                    planning_step = element
-                assert isinstance(planning_step, PlanningStep)  # Last yielded element should be a PlanningStep
-                planning_end_time = time.time()
-                planning_step.timing = Timing(
-                    start_time=planning_start_time,
-                    end_time=planning_end_time,
+                # Run a planning step if scheduled
+                if self.planning_interval is not None and (
+                    self.step_number == 1 or (self.step_number - 1) % self.planning_interval == 0
+                ):
+                    planning_start_time = time.time()
+                    planning_step = None
+                    for element in self._generate_planning_step(
+                        task, is_first_step=len(self.memory.steps) == 1, step=self.step_number
+                    ):  # Don't use the attribute step_number here, because there can be steps from previous runs
+                        yield element
+                        planning_step = element
+                    assert isinstance(planning_step, PlanningStep)  # Last yielded element should be a PlanningStep
+                    planning_end_time = time.time()
+                    planning_step.timing = Timing(
+                        start_time=planning_start_time,
+                        end_time=planning_end_time,
+                    )
+                    self._finalize_step(planning_step)
+                    self.memory.steps.append(planning_step)
+                    self._persist_plan_step(planning_step, self.step_number)
+
+                # Start action step!
+                action_step_start_time = time.time()
+                action_step = ActionStep(
+                    step_number=self.step_number,
+                    timing=Timing(start_time=action_step_start_time),
+                    observations_images=images,
                 )
-                self._finalize_step(planning_step)
-                self.memory.steps.append(planning_step)
+                self.logger.log_rule(f"Step {self.step_number}", level=LogLevel.INFO)
+                try:
+                    for output in self._step_stream(action_step):
+                        # Yield all
+                        yield output
 
-            # Start action step!
-            action_step_start_time = time.time()
-            action_step = ActionStep(
-                step_number=self.step_number,
-                timing=Timing(start_time=action_step_start_time),
-                observations_images=images,
-            )
-            self.logger.log_rule(f"Step {self.step_number}", level=LogLevel.INFO)
-            try:
-                for output in self._step_stream(action_step):
-                    # Yield all
-                    yield output
+                        if isinstance(output, ActionOutput) and output.is_final_answer:
+                            final_answer = output.output
+                            self.logger.log(
+                                Text(f"Final answer: {final_answer}", style=f"bold {YELLOW_HEX}"),
+                                level=LogLevel.INFO,
+                            )
 
-                    if isinstance(output, ActionOutput) and output.is_final_answer:
-                        final_answer = output.output
-                        self.logger.log(
-                            Text(f"Final answer: {final_answer}", style=f"bold {YELLOW_HEX}"),
-                            level=LogLevel.INFO,
-                        )
+                            if self.final_answer_checks:
+                                self._validate_final_answer(final_answer)
+                            returned_final_answer = True
+                            action_step.is_final_answer = True
 
-                        if self.final_answer_checks:
-                            self._validate_final_answer(final_answer)
-                        returned_final_answer = True
-                        action_step.is_final_answer = True
+                except AgentGenerationError as e:
+                    # Agent generation errors are not caused by a Model error but an implementation error: so we should raise them and exit.
+                    raise e
+                except AgentError as e:
+                    # Other AgentError types are caused by the Model, so we should log them and iterate.
+                    action_step.error = e
+                finally:
+                    self._finalize_step(action_step)
+                    self.memory.steps.append(action_step)
+                    self._persist_action_step(action_step)
+                    yield action_step
+                    self.step_number += 1
 
-            except AgentGenerationError as e:
-                # Agent generation errors are not caused by a Model error but an implementation error: so we should raise them and exit.
-                raise e
-            except AgentError as e:
-                # Other AgentError types are caused by the Model, so we should log them and iterate.
-                action_step.error = e
-            finally:
-                self._finalize_step(action_step)
-                self.memory.steps.append(action_step)
+            if not returned_final_answer and self.step_number == max_steps + 1:
+                final_answer = self._handle_max_steps_reached(task)
                 yield action_step
-                self.step_number += 1
-
-        if not returned_final_answer and self.step_number == max_steps + 1:
-            final_answer = self._handle_max_steps_reached(task)
-            yield action_step
-        final_answer_step = FinalAnswerStep(handle_agent_output_types(final_answer))
-        self._finalize_step(final_answer_step)
-        yield final_answer_step
+            final_answer_step = FinalAnswerStep(handle_agent_output_types(final_answer))
+            self._finalize_step(final_answer_step)
+            yield final_answer_step
+        except KeyboardInterrupt as e:
+            self._finish_execution_state(ExecutionStatus.INTERRUPTED, error=e)
+            raise
+        except Exception as e:
+            status = (
+                ExecutionStatus.INTERRUPTED
+                if isinstance(e, AgentError) and str(e).startswith("Agent interrupted")
+                else ExecutionStatus.FAILED
+            )
+            self._finish_execution_state(status, error=e)
+            raise
+        else:
+            status = ExecutionStatus.COMPLETED if returned_final_answer else ExecutionStatus.MAX_STEPS
+            self._finish_execution_state(status, output=final_answer)
 
     def _validate_final_answer(self, final_answer: Any):
         for check_function in self.final_answer_checks:
@@ -623,6 +653,35 @@ You have been provided with these additional arguments, that you can access dire
             memory_step.timing.end_time = time.time()
         self.step_callbacks.callback(memory_step, agent=self)
 
+    def _persist_plan_step(self, planning_step: PlanningStep, step_number: int) -> None:
+        state_store = getattr(self, "state_store", None)
+        if state_store is None:
+            return
+        state_store.record_plan(
+            step_number=step_number,
+            planning_step=planning_step,
+            messages=self.write_memory_to_messages(),
+        )
+
+    def _persist_action_step(self, action_step: ActionStep) -> None:
+        state_store = getattr(self, "state_store", None)
+        if state_store is None:
+            return
+        state_store.record_action(action_step=action_step, messages=self.write_memory_to_messages())
+
+    def _finish_execution_state(
+        self, status: ExecutionStatus, output: Any = None, error: BaseException | None = None
+    ) -> None:
+        state_store = getattr(self, "state_store", None)
+        if state_store is None:
+            return
+        state_store.finish(
+            status=status,
+            output=output,
+            error=error,
+            messages=self.write_memory_to_messages(),
+        )
+
     def _handle_max_steps_reached(self, task: str) -> Any:
         action_step_start_time = time.time()
         final_answer = self.provide_final_answer(task)
@@ -635,6 +694,7 @@ You have been provided with these additional arguments, that you can access dire
         final_memory_step.action_output = final_answer.content
         self._finalize_step(final_memory_step)
         self.memory.steps.append(final_memory_step)
+        self._persist_action_step(final_memory_step)
         return final_answer.content
 
     def _generate_planning_step(
@@ -1228,6 +1288,9 @@ class ToolCallingAgent(MultiStepAgent):
             Defaults to `ThreadPoolExecutor`'s default.
         tool_permissions ([`~gate.ToolPermissionPolicy`], *optional*): Permission policy applied to every tool call.
             Defaults to allowing every tool.
+        state_store ([`~state_store.StateStore`], `str` or `Path`, *optional*): Execution state persistence.
+            When set, a JSON snapshot is written after every step and when the run finishes or is interrupted.
+            Passing `None` (default) disables persistence.
         **kwargs: Additional keyword arguments.
     """
 
@@ -1240,6 +1303,7 @@ class ToolCallingAgent(MultiStepAgent):
         stream_outputs: bool = False,
         max_tool_threads: int | None = None,
         tool_permissions: ToolPermissionPolicy | None = None,
+        state_store: StateStore | str | Path | None = None,
         **kwargs,
     ):
         prompt_templates = prompt_templates or yaml.safe_load(
@@ -1268,6 +1332,8 @@ class ToolCallingAgent(MultiStepAgent):
             state=self.state,
             logger=self.logger,
         )
+        # Optional execution state persistence.
+        self.state_store = StateStore(state_store) if isinstance(state_store, (str, Path)) else state_store
 
     @property
     def tools_and_managed_agents(self):
