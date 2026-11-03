@@ -295,7 +295,9 @@ class LoginFlowDocumentValidator(TaskCompletionValidator):
         unexpected = sorted((changed | added) - {self.deliverable})
         if unexpected:
             return CompletionCheck("write_scope", False, _format_paths("unexpected writes", unexpected))
-        return CompletionCheck("write_scope", True, f"only {self.deliverable} was written")
+        if self.deliverable in (changed | added):
+            return CompletionCheck("write_scope", True, f"only {self.deliverable} was written")
+        return CompletionCheck("write_scope", True, f"no writes outside {self.deliverable}")
 
 
 class SessionBoundaryFixValidator(TaskCompletionValidator):

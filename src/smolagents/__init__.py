@@ -24,6 +24,7 @@ from .completion import *
 from .default_tools import *
 from .gate import *
 from .gradio_ui import *
+from .harness import *
 from .local_python_executor import *
 from .mcp_client import *
 from .memory import *
