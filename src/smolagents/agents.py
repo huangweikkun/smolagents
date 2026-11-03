@@ -45,6 +45,30 @@ if TYPE_CHECKING:
     import PIL.Image
 
 from .agent_types import handle_agent_output_types
+from .audit import ApprovalManager, ApprovalStatus
+from .checkpoint import (
+    CheckpointInFlightError,
+    CheckpointManager,
+    CheckpointNotFoundError,
+    CheckpointState,
+    CheckpointValidationError,
+    UnknownResultError,
+    build_budget,
+    build_evidence,
+    build_plans,
+    deserialize_memory_step,
+    deserialize_state,
+    deserialize_tool_call,
+    deserialize_value,
+    new_run_id,
+    serialize_error,
+    serialize_memory_step,
+    serialize_state,
+    serialize_tool_call,
+    serialize_value,
+    utc_now,
+    validate_checkpoint_compatibility,
+)
 from .default_tools import TOOL_MAPPING, FinalAnswerTool
 from .gate import ToolExecutionGate, ToolPermissionPolicy
 from .local_python_executor import BASE_BUILTIN_MODULES, LocalPythonExecutor, PythonExecutor, fix_final_answer_code
@@ -79,7 +103,7 @@ from .monitoring import (
     TokenUsage,
 )
 from .remote_executors import BlaxelExecutor, DockerExecutor, E2BExecutor, ModalExecutor
-from .state_store import ExecutionStatus, StateStore
+from .state_store import ExecutionStatus, StateStore, exit_code_for
 from .tools import BaseTool, Tool
 from .utils import (
     AgentError,
@@ -501,6 +525,15 @@ You have been provided with these additional arguments, that you can access dire
                 messages=self.write_memory_to_messages(),
             )
 
+        self._active_max_steps = max_steps
+        if getattr(self, "checkpoint_store", None) is not None:
+            self._checkpoint_run_id = new_run_id()
+            self._checkpoint_started_at = utc_now()
+            self._checkpoint_pending_step = None
+            self._checkpoint_pending_tool_calls = None
+            self._checkpoint_action_step = None
+            self._write_checkpoint(max_steps=max_steps, step_number=0, next_step_number=1)
+
         if getattr(self, "python_executor", None):
             self.python_executor.send_variables(variables=self.state)
             self.python_executor.send_tools({**self.tools, **self.managed_agents})
@@ -552,9 +585,14 @@ You have been provided with these additional arguments, that you can access dire
         return output
 
     def _run_stream(
-        self, task: str, max_steps: int, images: list["PIL.Image.Image"] | None = None
+        self,
+        task: str,
+        max_steps: int,
+        images: list["PIL.Image.Image"] | None = None,
+        start_step: int = 1,
+        skip_planning_at_step: int | None = None,
     ) -> Generator[ActionStep | PlanningStep | FinalAnswerStep | ChatMessageStreamDelta]:
-        self.step_number = 1
+        self.step_number = start_step
         returned_final_answer = False
         try:
             while not returned_final_answer and self.step_number <= max_steps:
@@ -562,8 +600,10 @@ You have been provided with these additional arguments, that you can access dire
                     raise AgentError("Agent interrupted.", self.logger)
 
                 # Run a planning step if scheduled
-                if self.planning_interval is not None and (
-                    self.step_number == 1 or (self.step_number - 1) % self.planning_interval == 0
+                if (
+                    self.planning_interval is not None
+                    and skip_planning_at_step != self.step_number
+                    and (self.step_number == 1 or (self.step_number - 1) % self.planning_interval == 0)
                 ):
                     planning_start_time = time.time()
                     planning_step = None
@@ -581,6 +621,11 @@ You have been provided with these additional arguments, that you can access dire
                     self._finalize_step(planning_step)
                     self.memory.steps.append(planning_step)
                     self._persist_plan_step(planning_step, self.step_number)
+                    self._write_checkpoint(
+                        max_steps=max_steps,
+                        step_number=self.step_number,
+                        next_step_number=self.step_number,
+                    )
 
                 # Start action step!
                 action_step_start_time = time.time()
@@ -590,6 +635,14 @@ You have been provided with these additional arguments, that you can access dire
                     observations_images=images,
                 )
                 self.logger.log_rule(f"Step {self.step_number}", level=LogLevel.INFO)
+                self._checkpoint_action_step = self.step_number
+                self._write_checkpoint(
+                    max_steps=max_steps,
+                    step_number=self.step_number,
+                    next_step_number=self.step_number,
+                    in_flight_step_number=self.step_number,
+                    in_flight_phase="action_started",
+                )
                 try:
                     for output in self._step_stream(action_step):
                         # Yield all
@@ -617,6 +670,14 @@ You have been provided with these additional arguments, that you can access dire
                     self._finalize_step(action_step)
                     self.memory.steps.append(action_step)
                     self._persist_action_step(action_step)
+                    self._write_checkpoint(
+                        max_steps=max_steps,
+                        step_number=self.step_number,
+                        next_step_number=self.step_number + 1,
+                    )
+                    self._checkpoint_pending_step = None
+                    self._checkpoint_pending_tool_calls = None
+                    self._checkpoint_action_step = None
                     yield action_step
                     self.step_number += 1
 
@@ -627,6 +688,7 @@ You have been provided with these additional arguments, that you can access dire
             self._finalize_step(final_answer_step)
             yield final_answer_step
         except KeyboardInterrupt as e:
+            self._write_interrupted_checkpoint(max_steps=max_steps, status=ExecutionStatus.INTERRUPTED, error=e)
             self._finish_execution_state(ExecutionStatus.INTERRUPTED, error=e)
             raise
         except Exception as e:
@@ -635,11 +697,50 @@ You have been provided with these additional arguments, that you can access dire
                 if isinstance(e, AgentError) and str(e).startswith("Agent interrupted")
                 else ExecutionStatus.FAILED
             )
+            self._write_interrupted_checkpoint(max_steps=max_steps, status=status, error=e)
             self._finish_execution_state(status, error=e)
             raise
         else:
             status = ExecutionStatus.COMPLETED if returned_final_answer else ExecutionStatus.MAX_STEPS
+            self._write_checkpoint(
+                max_steps=max_steps,
+                status=status,
+                step_number=self.step_number,
+                next_step_number=self.step_number,
+                output=final_answer,
+            )
             self._finish_execution_state(status, output=final_answer)
+
+    def _write_interrupted_checkpoint(self, *, max_steps: int, status: ExecutionStatus, error: BaseException) -> None:
+        next_step = self._checkpoint_next_step_number()
+        action_in_progress = getattr(self, "_checkpoint_action_step", None) == self.step_number
+        if next_step == self.step_number and action_in_progress:
+            phase = (
+                "tools_pending"
+                if getattr(self, "_checkpoint_pending_step", None) == self.step_number
+                else "action_started"
+            )
+            pending_tool_calls = (
+                getattr(self, "_checkpoint_pending_tool_calls", None) if phase == "tools_pending" else None
+            )
+            self._write_checkpoint(
+                max_steps=max_steps,
+                status=status,
+                step_number=self.step_number,
+                next_step_number=next_step,
+                in_flight_step_number=self.step_number,
+                in_flight_phase=phase,
+                in_flight_tool_calls=pending_tool_calls,
+                error=error,
+            )
+        else:
+            self._write_checkpoint(
+                max_steps=max_steps,
+                status=status,
+                step_number=self.step_number,
+                next_step_number=next_step,
+                error=error,
+            )
 
     def _validate_final_answer(self, final_answer: Any):
         for check_function in self.final_answer_checks:
@@ -680,6 +781,89 @@ You have been provided with these additional arguments, that you can access dire
             output=output,
             error=error,
             messages=self.write_memory_to_messages(),
+        )
+
+    def _active_task_images(self) -> Any:
+        for step in self.memory.steps:
+            if isinstance(step, TaskStep):
+                return step.task_images
+        return None
+
+    def _checkpoint_next_step_number(self) -> int:
+        last_step = self.memory.steps[-1] if self.memory.steps else None
+        if isinstance(last_step, ActionStep) and last_step.step_number == self.step_number:
+            return self.step_number + 1
+        return self.step_number
+
+    def _write_checkpoint(
+        self,
+        *,
+        max_steps: int,
+        status: ExecutionStatus = ExecutionStatus.RUNNING,
+        step_number: int | None = None,
+        next_step_number: int | None = None,
+        in_flight_step_number: int | None = None,
+        in_flight_phase: str | None = None,
+        in_flight_tool_calls: list[dict[str, Any]] | None = None,
+        output: Any = None,
+        error: BaseException | None = None,
+    ) -> None:
+        checkpoint_store = getattr(self, "checkpoint_store", None)
+        if checkpoint_store is None:
+            return
+
+        current_step = self.step_number if step_number is None else step_number
+        if next_step_number is None:
+            next_step_number = current_step + 1
+        started_at = getattr(self, "_checkpoint_started_at", None) or utc_now()
+        run_id = getattr(self, "_checkpoint_run_id", None) or new_run_id()
+
+        pending_approvals: list[dict[str, Any]] = []
+        approval_manager = getattr(self, "approval_manager", None)
+        if approval_manager is not None:
+            try:
+                pending_approvals = [
+                    record.dict() for record in approval_manager.list_records(status=ApprovalStatus.PENDING)
+                ]
+            except Exception as e:  # Checkpointing must not break the run because approvals are unavailable.
+                self.logger.log(f"Could not collect pending approvals for checkpoint: {e}", level=LogLevel.ERROR)
+
+        in_flight_step = None
+        if in_flight_step_number is not None:
+            in_flight_step = {
+                "step_number": in_flight_step_number,
+                "started_at": utc_now(),
+                "phase": in_flight_phase or "action_started",
+                "tool_calls": in_flight_tool_calls or [],
+            }
+
+        checkpoint_store.save(
+            CheckpointState(
+                run_id=run_id,
+                task=self.task or "",
+                task_images=serialize_value(self._active_task_images()),
+                agent_class=type(self).__name__,
+                agent_name=getattr(self, "name", None),
+                model_id=getattr(self.model, "model_id", None),
+                tool_names=sorted(self.tools.keys()),
+                managed_agent_names=sorted(self.managed_agents.keys()),
+                max_steps=max_steps,
+                planning_interval=self.planning_interval,
+                step_number=current_step,
+                next_step_number=next_step_number,
+                status=status.value,
+                exit_code=exit_code_for(status),
+                budget=build_budget(self.memory.steps, max_steps=max_steps, started_at=started_at),
+                plans=build_plans(self.memory.steps),
+                evidence=build_evidence(self.memory.steps),
+                pending_approvals=pending_approvals,
+                memory_system_prompt=self.memory.system_prompt.system_prompt,
+                memory_steps=[serialize_memory_step(step) for step in self.memory.steps],
+                state=serialize_state(self.state),
+                final_output=serialize_value(output),
+                error=serialize_error(error),
+                in_flight_step=in_flight_step,
+            )
         )
 
     def _handle_max_steps_reached(self, task: str) -> Any:
@@ -1291,6 +1475,11 @@ class ToolCallingAgent(MultiStepAgent):
         state_store ([`~state_store.StateStore`], `str` or `Path`, *optional*): Execution state persistence.
             When set, a JSON snapshot is written after every step and when the run finishes or is interrupted.
             Passing `None` (default) disables persistence.
+        approval_manager ([`~audit.ApprovalManager`], *optional*): Approval manager whose pending records are
+            included in checkpoints under `pending_approvals`.
+        checkpoint_store ([`~checkpoint.CheckpointManager`], `str` or `Path`, *optional*): Checkpoint directory.
+            When set, checkpoints are written after safe steps and before tool execution. Passing `None` (default)
+            disables checkpointing.
         **kwargs: Additional keyword arguments.
     """
 
@@ -1304,6 +1493,8 @@ class ToolCallingAgent(MultiStepAgent):
         max_tool_threads: int | None = None,
         tool_permissions: ToolPermissionPolicy | None = None,
         state_store: StateStore | str | Path | None = None,
+        approval_manager: ApprovalManager | None = None,
+        checkpoint_store: CheckpointManager | str | Path | None = None,
         **kwargs,
     ):
         prompt_templates = prompt_templates or yaml.safe_load(
@@ -1334,6 +1525,17 @@ class ToolCallingAgent(MultiStepAgent):
         )
         # Optional execution state persistence.
         self.state_store = StateStore(state_store) if isinstance(state_store, (str, Path)) else state_store
+        # Optional checkpoint persistence and pending approvals.
+        self.approval_manager = approval_manager
+        self.checkpoint_store = (
+            CheckpointManager(checkpoint_store) if isinstance(checkpoint_store, (str, Path)) else checkpoint_store
+        )
+        self._checkpoint_run_id: str | None = None
+        self._checkpoint_started_at: str | None = None
+        self._checkpoint_pending_step: int | None = None
+        self._checkpoint_pending_tool_calls: list[dict[str, Any]] | None = None
+        self._checkpoint_action_step: int | None = None
+        self._active_max_steps: int | None = None
 
     @property
     def tools_and_managed_agents(self):
@@ -1457,6 +1659,19 @@ class ToolCallingAgent(MultiStepAgent):
             yield tool_call
             parallel_calls[tool_call.id] = tool_call
 
+        # Mark the step as having pending tool calls before any tool side effect can happen.
+        pending_tool_calls = [serialize_tool_call(tool_call) for tool_call in parallel_calls.values()]
+        self._checkpoint_pending_step = self.step_number
+        self._checkpoint_pending_tool_calls = pending_tool_calls
+        self._write_checkpoint(
+            max_steps=self._active_max_steps or self.max_steps,
+            step_number=self.step_number,
+            next_step_number=self.step_number,
+            in_flight_step_number=self.step_number,
+            in_flight_phase="tools_pending",
+            in_flight_tool_calls=pending_tool_calls,
+        )
+
         # Helper function to process a single tool call
         def process_single_tool_call(tool_call: ToolCall) -> ToolOutput:
             tool_name = tool_call.name
@@ -1521,6 +1736,165 @@ class ToolCallingAgent(MultiStepAgent):
         """
         result = self.tool_execution_gate.execute(ToolCall(name=tool_name, arguments=arguments, id=""))
         return result.output
+
+    def resume_from_checkpoint(
+        self,
+        checkpoint: str | Path | None = None,
+        *,
+        max_steps: int | None = None,
+        in_flight_policy: Literal["auto", "mark_unknown", "abort", "retry"] = "auto",
+        stream: bool = False,
+    ) -> Any:
+        """Resume a run from a checkpoint file or the latest checkpoint.
+
+        Terminal checkpoints (`completed` / `max_steps`) return their cached output without re-running. When an
+        in-flight tool call result is unknown, the default `auto` policy marks the step as `UNKNOWN_RESULT` and does
+        not replay it; pass `in_flight_policy="retry"` explicitly to replay idempotent tools.
+        """
+        if checkpoint is not None:
+            checkpoint_path = Path(checkpoint)
+            manager = self.checkpoint_store or CheckpointManager(checkpoint_path.parent)
+            self.checkpoint_store = manager
+            state = manager.load(checkpoint_path)
+        else:
+            if self.checkpoint_store is None:
+                raise CheckpointNotFoundError(
+                    "No checkpoint store is configured. Provide a checkpoint path or set checkpoint_store."
+                )
+            state = self.checkpoint_store.load()
+
+        validate_checkpoint_compatibility(
+            state,
+            agent_class=type(self).__name__,
+            model_id=getattr(self.model, "model_id", None),
+            tool_names=set(self.tools),
+            managed_agent_names=set(self.managed_agents),
+        )
+
+        self.task = state.task
+        self.memory.system_prompt = SystemPromptStep(state.memory_system_prompt)
+        self.memory.steps = [deserialize_memory_step(item) for item in state.memory_steps]
+        restored_state = deserialize_state(state.state)
+        self.state.clear()
+        self.state.update(restored_state)
+        self.step_number = state.step_number
+        self.interrupt_switch = False
+        self._active_max_steps = max_steps or state.max_steps
+        self._checkpoint_run_id = state.run_id
+        self._checkpoint_started_at = state.budget.started_at
+        self._checkpoint_pending_step = None
+        self._checkpoint_pending_tool_calls = None
+        self._checkpoint_action_step = None
+        task_images = deserialize_value(state.task_images)
+
+        if state.status in (ExecutionStatus.COMPLETED.value, ExecutionStatus.MAX_STEPS.value):
+            self.logger.log(
+                f"Checkpoint '{state.checkpoint_id}' is already terminal with status '{state.status}'. "
+                "Returning cached output.",
+                level=LogLevel.INFO,
+            )
+            return deserialize_value(state.final_output)
+
+        if self.state_store is not None and not self.state_store.is_started:
+            self.state_store.start(
+                task=self.task,
+                agent_class=type(self).__name__,
+                agent_name=self.name,
+                model_id=getattr(self.model, "model_id", None),
+                max_steps=self._active_max_steps,
+                planning_interval=self.planning_interval,
+                messages=self.write_memory_to_messages(),
+            )
+
+        next_step = self._resolve_resume_step(state, in_flight_policy)
+        if next_step > self._active_max_steps:
+            raise CheckpointValidationError(f"Resume step {next_step} exceeds max_steps {self._active_max_steps}.")
+
+        last_step = self.memory.steps[-1] if self.memory.steps else None
+        skip_planning_at_step = (
+            next_step if isinstance(last_step, PlanningStep) and next_step == state.next_step_number else None
+        )
+        self.logger.log(
+            f"Resuming from checkpoint '{state.checkpoint_id}' at step {next_step}"
+            + (f" (in-flight policy: {in_flight_policy})" if state.in_flight_step else ""),
+            level=LogLevel.INFO,
+        )
+
+        run_stream = self._run_stream(
+            task=self.task,
+            max_steps=self._active_max_steps,
+            images=task_images,
+            start_step=next_step,
+            skip_planning_at_step=skip_planning_at_step,
+        )
+        if stream:
+            return run_stream
+        steps = list(run_stream)
+        return steps[-1].output
+
+    def _resolve_resume_step(
+        self,
+        state: CheckpointState,
+        in_flight_policy: Literal["auto", "mark_unknown", "abort", "retry"],
+    ) -> int:
+        in_flight_step = state.in_flight_step
+        if not in_flight_step:
+            return state.next_step_number
+
+        target_step = in_flight_step["step_number"]
+        phase = in_flight_step.get("phase", "tools_pending")
+        if in_flight_policy == "auto":
+            resolved_policy = "retry" if phase == "action_started" else "mark_unknown"
+        else:
+            resolved_policy = in_flight_policy
+
+        if resolved_policy == "abort":
+            attempted_tools = ", ".join(item.get("name", "") for item in in_flight_step.get("tool_calls", []))
+            raise CheckpointInFlightError(
+                f"Step {target_step} has an in-flight tool call with an unknown result "
+                f"(phase={phase}, tools={attempted_tools or 'none'}). "
+                "Automatic replay is disabled to avoid duplicate side effects. "
+                "Pass in_flight_policy='retry' for idempotent tools or 'mark_unknown' to continue."
+            )
+        if resolved_policy == "retry":
+            self.logger.log(
+                f"Retrying in-flight step {target_step} (phase={phase}); tool side effects may be repeated.",
+                level=LogLevel.INFO,
+            )
+            return target_step
+        if resolved_policy == "mark_unknown":
+            self._mark_unknown_result(target_step, in_flight_step)
+            return target_step + 1
+        raise CheckpointValidationError(f"Unknown in_flight_policy: {in_flight_policy}")
+
+    def _mark_unknown_result(self, target_step: int, in_flight_step: dict[str, Any]) -> None:
+        tool_calls = [deserialize_tool_call(item) for item in in_flight_step.get("tool_calls", [])]
+        now = time.time()
+        unknown_step = ActionStep(
+            step_number=target_step,
+            timing=Timing(start_time=now, end_time=now),
+            tool_calls=tool_calls,
+            error=UnknownResultError(
+                "UNKNOWN_RESULT: a previous tool call may have completed externally, but its result was not saved. "
+                "Do not automatically replay it; verify the external state before retrying.",
+                self.logger,
+            ),
+        )
+        self.memory.steps.append(unknown_step)
+        self.step_number = target_step
+        self._persist_action_step(unknown_step)
+        self._write_checkpoint(
+            max_steps=self._active_max_steps,
+            step_number=target_step,
+            next_step_number=target_step + 1,
+        )
+        self._checkpoint_pending_step = None
+        self._checkpoint_pending_tool_calls = None
+        self._checkpoint_action_step = None
+        self.logger.log(
+            f"Step {target_step} marked as UNKNOWN_RESULT; the previous tool call will not be replayed.",
+            level=LogLevel.INFO,
+        )
 
 
 class CodeAgent(MultiStepAgent):

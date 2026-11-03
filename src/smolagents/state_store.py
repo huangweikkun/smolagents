@@ -332,6 +332,11 @@ class StateStore:
             raise StateStoreError("Execution state has not been initialized: call start() first.")
         return self._state
 
+    @property
+    def is_started(self) -> bool:
+        """Whether a run has already initialized this store."""
+        return self._state is not None
+
     def start(
         self,
         *,
