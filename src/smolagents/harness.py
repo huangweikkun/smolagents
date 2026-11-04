@@ -283,6 +283,8 @@ class HarnessConfig:
         register_sandbox_tools (`bool`): Whether the sandbox file and command tools are registered per run.
         use_os_isolation (`bool`): Whether the sandbox requires an OS-level isolation backend.
         sandbox_config ([`SandboxConfig`], *optional*): Explicit sandbox configuration.
+        sandbox_tool_factory (`Callable[[Sandbox], Iterable[BaseTool]]`, *optional*): Builds the per-run toolset from
+            the started sandbox, e.g. workspace coding tools. Takes precedence over `register_sandbox_tools`.
         verify_completion (`bool`): Whether the business task is verified after the executor returns.
         max_tool_calls (`int`, *optional*): Maximum tool calls allowed per run; exceeding it stops with
             status `budget_exceeded`.
@@ -306,6 +308,7 @@ class HarnessConfig:
     register_sandbox_tools: bool = True
     use_os_isolation: bool = True
     sandbox_config: SandboxConfig | None = None
+    sandbox_tool_factory: Callable[[Sandbox], Iterable[BaseTool]] | None = None
     verify_completion: bool = True
     max_tool_calls: int | None = None
     allowed_tools: frozenset[str] | None = None
@@ -330,6 +333,7 @@ class HarnessContext:
         run_id (`str`): Identifier of the run.
         max_tool_calls (`int`, *optional*): Tool-call budget for this run.
         tool_calls_used (`int`): Number of tool calls already executed.
+        audit_log ([`AuditLog`]): Append-only audit log shared with nested agents.
     """
 
     task: str
@@ -341,6 +345,7 @@ class HarnessContext:
     state: StateStore
     checkpoints: CheckpointManager
     approvals: ApprovalManager
+    audit_log: AuditLog
     state_variables: dict[str, Any] = field(default_factory=dict)
     run_id: str = ""
     max_tool_calls: int | None = None
@@ -562,6 +567,7 @@ class Harness:
                 state=self._state_store,
                 checkpoints=self._checkpoints,
                 approvals=self._approvals,
+                audit_log=self._audit_log,
                 state_variables=state_variables,
                 run_id=run_id,
                 max_tool_calls=self.config.max_tool_calls,
@@ -636,7 +642,10 @@ class Harness:
         except SandboxError as exc:
             raise HarnessSandboxError(f"Could not start the sandbox: {exc}") from exc
         try:
-            if self.config.register_sandbox_tools:
+            if self.config.sandbox_tool_factory is not None:
+                for tool in self.config.sandbox_tool_factory(sandbox):
+                    registry.register(tool)
+            elif self.config.register_sandbox_tools:
                 for tool in create_sandbox_tools(sandbox):
                     registry.register(tool)
         except HarnessToolRegistryError:

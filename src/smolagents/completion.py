@@ -510,6 +510,11 @@ def _scan_line_references(text: str, workspace: Path) -> _ReferenceScan:
         start = int(match.group("start"))
         end = int(match.group("end") or start)
         resolved = Path(raw_path).resolve() if Path(raw_path).is_absolute() else (workspace / raw_path).resolve()
+        if not resolved.is_file() and "/" not in raw_path:
+            # Allow a unique bare filename such as `app.ts:8` when it resolves to exactly one workspace file.
+            bare_match = _resolve_bare_filename(workspace, raw_path)
+            if bare_match is not None:
+                resolved = bare_match
         try:
             relative = resolved.relative_to(workspace).as_posix()
         except ValueError:
@@ -526,6 +531,19 @@ def _scan_line_references(text: str, workspace: Path) -> _ReferenceScan:
             continue
         scan.by_path.setdefault(relative, []).append((start, end))
     return scan
+
+
+def _resolve_bare_filename(workspace: Path, name: str) -> Path | None:
+    """Resolve a bare filename only when exactly one workspace file matches it."""
+    matches: list[Path] = []
+    for path in workspace.rglob(name):
+        if not path.is_file():
+            continue
+        relative_parts = path.relative_to(workspace).parts[:-1]
+        if any(part in DEFAULT_EXCLUDED_DIRS for part in relative_parts):
+            continue
+        matches.append(path)
+    return matches[0] if len(matches) == 1 else None
 
 
 def _count_lines(path: Path) -> int | None:

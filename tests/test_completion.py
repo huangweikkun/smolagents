@@ -223,6 +223,27 @@ def test_fix_tests_rejects_new_test_outside_generated_dir(tmp_path):
     assert "existing_tests_untouched" in _failed_names(report)
 
 
+def test_understand_resolves_unique_bare_filenames(tmp_path):
+    document = LOGIN_FLOW_DOCUMENT.replace("`src/routes/login.ts:8-11`", "`login.ts:8-11`")
+
+    report = LoginFlowDocumentValidator().validate(_understand_repo(tmp_path, document))
+
+    assert report.passed
+
+
+def test_understand_rejects_ambiguous_bare_filename(tmp_path):
+    root = _understand_repo(tmp_path)
+    duplicate = root / "src" / "legacy" / "login.ts"
+    duplicate.parent.mkdir(parents=True)
+    duplicate.write_text(_source_file(), encoding="utf-8")
+    document = LOGIN_FLOW_DOCUMENT.replace("`src/routes/login.ts:8-11`", "`login.ts:8-11`")
+
+    report = LoginFlowDocumentValidator().validate(_understand_repo(tmp_path, document))
+
+    assert not report.passed
+    assert "references_valid" in _failed_names(report)
+
+
 def test_fix_tests_rejects_unmodified_deliverable(tmp_path):
     root = _fix_repo(tmp_path)
     baseline = snapshot_files(root)

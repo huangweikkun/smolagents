@@ -905,6 +905,12 @@ You have been provided with these additional arguments, that you can access dire
                 "tool_calls": in_flight_tool_calls or [],
             }
 
+        # Hash at the safe boundary so legitimately approved writes do not look like external changes on resume.
+        fingerprint = getattr(self, "_workspace_fingerprint", None)
+        workspace_dir = getattr(self, "workspace_dir", None)
+        if workspace_dir is not None:
+            fingerprint = workspace_fingerprint(workspace_dir)
+
         checkpoint_store.save(
             CheckpointState(
                 run_id=run_id,
@@ -928,7 +934,7 @@ You have been provided with these additional arguments, that you can access dire
                 memory_system_prompt=self.memory.system_prompt.system_prompt,
                 memory_steps=[serialize_memory_step(step) for step in self.memory.steps],
                 state=serialize_state(self.state),
-                workspace_fingerprint=getattr(self, "_workspace_fingerprint", None),
+                workspace_fingerprint=fingerprint,
                 final_output=serialize_value(output),
                 error=serialize_error(error),
                 in_flight_step=in_flight_step,
@@ -1902,6 +1908,9 @@ class ToolCallingAgent(MultiStepAgent):
         self._checkpoint_started_at = state.budget.started_at
         self._run_started_at = state.budget.started_at
         self._workspace_fingerprint = state.workspace_fingerprint
+        if getattr(self, "tool_execution_gate", None) is not None:
+            # Resumed audit events must keep the original run identity.
+            self.tool_execution_gate.bind_run(state.run_id)
         self._checkpoint_pending_step = None
         self._checkpoint_pending_tool_calls = None
         self._checkpoint_action_step = None

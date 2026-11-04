@@ -129,6 +129,8 @@ class ChatMessage:
     token_usage: TokenUsage | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.role, MessageRole):
+            self.role = MessageRole(self.role)
         if self.tool_calls is None:
             return
         self.tool_calls = [_coerce_tool_call(tool_call) for tool_call in self.tool_calls]
