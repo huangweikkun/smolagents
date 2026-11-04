@@ -15,17 +15,60 @@
 import pytest
 
 from smolagents.agents import ToolCallingAgent
+from smolagents.audit import ApprovalManager, AuditEventType, AuditLog
 from smolagents.default_tools import FinalAnswerTool
 from smolagents.gate import (
+    GateDecisionStatus,
+    ToolApprovalRequiredError,
+    ToolDuplicateCallError,
     ToolExecutionGate,
     ToolExecutionResult,
     ToolPermissionError,
     ToolPermissionPolicy,
+    ToolRiskLevel,
+    ToolRiskPolicy,
 )
 from smolagents.memory import ToolCall
 from smolagents.models import ChatMessage, MessageRole, Model
-from smolagents.tools import tool
+from smolagents.tools import Tool, tool
 from smolagents.utils import AgentToolCallError, AgentToolExecutionError
+
+
+class CountingEchoTool(Tool):
+    name = "counting_echo"
+    description = "Echo the given text and count how often the handler runs."
+    inputs = {"text": {"type": "string", "description": "Text to echo."}}
+    output_type = "string"
+
+    def __init__(self):
+        self.calls = 0
+        super().__init__()
+
+    def forward(self, text: str) -> str:
+        self.calls += 1
+        return text
+
+
+class WritingTool(Tool):
+    name = "write_file"
+    description = "Write text to a file."
+    inputs = {
+        "path": {"type": "string", "description": "Relative path."},
+        "content": {"type": "string", "description": "Text content."},
+    }
+    output_type = "string"
+
+    def __init__(self, root):
+        self.root = root
+        self.calls = 0
+        super().__init__()
+
+    def forward(self, path: str, content: str) -> str:
+        self.calls += 1
+        target = self.root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        return str(target)
 
 
 class DummyModel(Model):
@@ -129,3 +172,116 @@ def test_tool_calling_agent_applies_permission_policy(echo_tool):
 
     with pytest.raises(ToolPermissionError):
         agent.execute_tool_call(echo_tool.name, {"text": "hello"})
+
+
+def test_invalid_arguments_return_structured_decision_without_running_handler():
+    tool = CountingEchoTool()
+    gate = ToolExecutionGate(tools=[tool])
+
+    outcome = gate.try_execute(ToolCall(name=tool.name, arguments={}, id="call-bad"))
+
+    assert outcome.result is None
+    assert outcome.decision.status is GateDecisionStatus.DENIED
+    assert outcome.decision.rule == "invalid_arguments"
+    assert outcome.decision.tool_call_id == "call-bad"
+    assert tool.calls == 0
+
+
+def test_third_identical_call_is_blocked_before_execution():
+    tool = CountingEchoTool()
+    gate = ToolExecutionGate(tools=[tool], duplicate_call_limit=2)
+
+    for index in range(2):
+        gate.execute(ToolCall(name=tool.name, arguments={"text": "same"}, id=f"call-{index}"))
+    assert tool.calls == 2
+
+    outcome = gate.try_execute(ToolCall(name=tool.name, arguments={"text": "same"}, id="call-2"))
+
+    assert outcome.result is None
+    assert outcome.decision.status is GateDecisionStatus.DUPLICATE
+    assert outcome.decision.rule == "duplicate_call"
+    assert outcome.decision.tool_call_id == "call-2"
+    assert tool.calls == 2
+
+
+def test_unapproved_high_risk_call_waits_and_keeps_target_unchanged(tmp_path):
+    approvals = ApprovalManager(tmp_path / "approvals.json")
+    audit = AuditLog(tmp_path / "audit.jsonl", run_id="run-1")
+    tool = WritingTool(tmp_path / "repo")
+    gate = ToolExecutionGate(
+        tools=[tool],
+        risk_policy=ToolRiskPolicy(tool_levels={tool.name: ToolRiskLevel.HIGH}),
+        approval_manager=approvals,
+        audit_log=audit,
+        run_id="run-1",
+    )
+    call = ToolCall(name=tool.name, arguments={"path": "draft.md", "content": "hello"}, id="call-w1")
+
+    outcome = gate.try_execute(call)
+
+    assert outcome.result is None
+    assert outcome.decision.status is GateDecisionStatus.WAITING_APPROVAL
+    assert outcome.decision.rule == "approval_required"
+    assert outcome.decision.approval_id is not None
+    assert tool.calls == 0
+    assert not (tmp_path / "repo" / "draft.md").exists()
+    records = approvals.list_records()
+    assert [record.record_id for record in records] == [outcome.decision.approval_id]
+    events = audit.events(run_id="run-1", tool_call_id="call-w1")
+    assert events[-1].event_type is AuditEventType.GATE_WAITING_APPROVAL
+    assert events[-1].decision == "waiting_approval"
+
+
+def test_execute_raises_approval_error_for_unapproved_call(tmp_path):
+    approvals = ApprovalManager(tmp_path / "approvals.json")
+    tool = WritingTool(tmp_path / "repo")
+    gate = ToolExecutionGate(
+        tools=[tool],
+        risk_policy=ToolRiskPolicy(tool_levels={tool.name: ToolRiskLevel.HIGH}),
+        approval_manager=approvals,
+    )
+    call = ToolCall(name=tool.name, arguments={"path": "draft.md", "content": "hello"}, id="call-w2")
+
+    with pytest.raises(ToolApprovalRequiredError) as error:
+        gate.execute(call)
+
+    assert error.value.decision.status is GateDecisionStatus.WAITING_APPROVAL
+    assert tool.calls == 0
+
+
+def test_approved_call_executes_once_and_replay_is_rejected(tmp_path):
+    approvals = ApprovalManager(tmp_path / "approvals.json")
+    tool = WritingTool(tmp_path / "repo")
+    gate = ToolExecutionGate(
+        tools=[tool],
+        risk_policy=ToolRiskPolicy(tool_levels={tool.name: ToolRiskLevel.HIGH}),
+        approval_manager=approvals,
+    )
+    call = ToolCall(name=tool.name, arguments={"path": "draft.md", "content": "hello"}, id="call-w3")
+    outcome = gate.try_execute(call)
+    approvals.approve(outcome.decision.approval_id, approver="maintainer")
+
+    result = gate.execute(call)
+    assert "draft.md" in result.observation
+    assert tool.calls == 1
+
+    with pytest.raises(ToolDuplicateCallError) as error:
+        gate.execute(call)
+
+    assert error.value.decision.rule == "approval_consumed"
+    assert tool.calls == 1
+    assert (tmp_path / "repo" / "draft.md").read_text(encoding="utf-8") == "hello"
+
+
+def test_high_risk_call_without_approval_manager_is_denied():
+    tool = CountingEchoTool()
+    gate = ToolExecutionGate(
+        tools=[tool],
+        risk_policy=ToolRiskPolicy(tool_levels={tool.name: ToolRiskLevel.HIGH}),
+    )
+
+    outcome = gate.try_execute(ToolCall(name=tool.name, arguments={"text": "hello"}, id="call-risk"))
+
+    assert outcome.decision.status is GateDecisionStatus.DENIED
+    assert outcome.decision.rule == "approval_unavailable"
+    assert tool.calls == 0

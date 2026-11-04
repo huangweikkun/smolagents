@@ -77,6 +77,184 @@ class ApprovalStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class AuditEventType(str, Enum):
+    """Kinds of append-only audit events recorded for a guarded run."""
+
+    GATE_ALLOW = "gate_allow"
+    GATE_DENY = "gate_deny"
+    GATE_WAITING_APPROVAL = "gate_waiting_approval"
+    EXECUTION_STARTED = "execution_started"
+    EXECUTION_COMPLETED = "execution_completed"
+    EXECUTION_FAILED = "execution_failed"
+    APPROVAL_REQUESTED = "approval_requested"
+    APPROVAL_APPROVED = "approval_approved"
+    APPROVAL_REJECTED = "approval_rejected"
+    SANDBOX_DENY = "sandbox_deny"
+
+
+@dataclass(frozen=True)
+class AuditEvent:
+    """One append-only audit record.
+
+    Args:
+        event_id (`str`): Unique identifier of the event.
+        run_id (`str`, *optional*): Run the event belongs to, used to rebuild a decision chain.
+        event_type ([`AuditEventType`]): What happened.
+        actor (`str`): Who or what produced the event.
+        timestamp (`str`): ISO-8601 timestamp.
+        tool_call_id (`str`, *optional*): Tool call the event belongs to.
+        tool_name (`str`, *optional*): Tool or operation referenced by the event.
+        rule (`str`, *optional*): Rule that triggered the decision, e.g. `permission` or `duplicate_call`.
+        decision (`str`, *optional*): Decision taken, e.g. `allowed`, `denied` or `waiting_approval`.
+        message (`str`): Human-readable explanation.
+        metadata (`dict`, *optional*): Additional JSON-safe payload.
+    """
+
+    event_id: str
+    run_id: str | None
+    event_type: AuditEventType
+    actor: str
+    timestamp: str
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    rule: str | None = None
+    decision: str | None = None
+    message: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def dict(self) -> dict[str, Any]:
+        return {
+            "event_id": self.event_id,
+            "run_id": self.run_id,
+            "event_type": self.event_type.value,
+            "actor": self.actor,
+            "timestamp": self.timestamp,
+            "tool_call_id": self.tool_call_id,
+            "tool_name": self.tool_name,
+            "rule": self.rule,
+            "decision": self.decision,
+            "message": self.message,
+            "metadata": make_json_serializable(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AuditEvent":
+        return cls(
+            event_id=data["event_id"],
+            run_id=data.get("run_id"),
+            event_type=AuditEventType(data["event_type"]),
+            actor=data["actor"],
+            timestamp=data["timestamp"],
+            tool_call_id=data.get("tool_call_id"),
+            tool_name=data.get("tool_name"),
+            rule=data.get("rule"),
+            decision=data.get("decision"),
+            message=data.get("message", ""),
+            metadata=data.get("metadata") or {},
+        )
+
+
+class AuditLog:
+    """Append-only JSON Lines audit log.
+
+    Every call to [`append`] adds one line to `path`; existing lines are never rewritten. Loading an existing file
+    restores the in-memory list so a new process can query the decision chain of earlier runs.
+
+    Args:
+        path (`str` or `Path`): JSONL file holding the events.
+        run_id (`str`, *optional*): Default run id attached to events that do not pass one explicitly.
+    """
+
+    def __init__(self, path: str | Path, *, run_id: str | None = None):
+        self.path = Path(path)
+        self.run_id = run_id
+        self._events: list[AuditEvent] = []
+        self._lock = threading.RLock()
+        if self.path.exists():
+            self._load()
+
+    def append(
+        self,
+        *,
+        event_type: AuditEventType | str,
+        actor: str,
+        tool_call_id: str | None = None,
+        tool_name: str | None = None,
+        rule: str | None = None,
+        decision: str | None = None,
+        message: str = "",
+        metadata: dict[str, Any] | None = None,
+        run_id: str | None = None,
+    ) -> AuditEvent:
+        """Append one event and flush it to disk before returning."""
+        try:
+            normalized_type = AuditEventType(event_type)
+        except ValueError as e:
+            raise ApprovalValidationError(f"Unknown audit event type: {event_type}") from e
+        actor = _require_text(actor, "actor")
+        if metadata is not None and not isinstance(metadata, dict):
+            raise ApprovalValidationError("'metadata' must be a dictionary when provided.")
+        event = AuditEvent(
+            event_id=uuid.uuid4().hex,
+            run_id=run_id if run_id is not None else self.run_id,
+            event_type=normalized_type,
+            actor=actor,
+            timestamp=_utc_now(),
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            rule=rule,
+            decision=decision,
+            message=message,
+            metadata=metadata or {},
+        )
+        with self._lock:
+            self._append_to_disk(event)
+            self._events.append(event)
+        return event
+
+    def events(
+        self,
+        *,
+        run_id: str | None = None,
+        tool_call_id: str | None = None,
+    ) -> tuple[AuditEvent, ...]:
+        """Return recorded events, optionally filtered by run or tool call."""
+        with self._lock:
+            events = list(self._events)
+        if run_id is not None:
+            events = [event for event in events if event.run_id == run_id]
+        if tool_call_id is not None:
+            events = [event for event in events if event.tool_call_id == tool_call_id]
+        return tuple(events)
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._events)
+
+    def _append_to_disk(self, event: AuditEvent) -> None:
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a", encoding="utf-8") as file:
+                file.write(json.dumps(event.dict(), ensure_ascii=False) + "\n")
+        except (OSError, TypeError, ValueError) as e:
+            raise AuditPersistenceError(f"Could not append audit event to '{self.path}': {e}") from e
+
+    def _load(self) -> None:
+        try:
+            lines = self.path.read_text(encoding="utf-8").splitlines()
+        except OSError as e:
+            raise AuditPersistenceError(f"Could not read audit log '{self.path}': {e}") from e
+        events: list[AuditEvent] = []
+        for number, line in enumerate(lines, start=1):
+            if not line.strip():
+                continue
+            try:
+                events.append(AuditEvent.from_dict(json.loads(line)))
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+                raise AuditPersistenceError(f"Malformed audit event at '{self.path}:{number}': {e}") from e
+        self._events = events
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -204,6 +382,8 @@ class ApprovalManager:
             JSON file used to persist approval records.
         handlers (`Mapping[str, ApprovalHandler]`, *optional*):
             Post-approval handlers keyed by operation type. Handlers are called after an approval is persisted.
+        audit_log ([`AuditLog`], *optional*):
+            Append-only audit log that receives approval requests and decisions when provided.
     """
 
     def __init__(
@@ -211,8 +391,10 @@ class ApprovalManager:
         path: str | Path = "approvals.json",
         *,
         handlers: Mapping[str, ApprovalHandler] | None = None,
+        audit_log: AuditLog | None = None,
     ):
         self.path = Path(path)
+        self.audit_log = audit_log
         self._records: dict[str, ApprovalRecord] = {}
         self._handlers: dict[str, ApprovalHandler] = {}
         self._lock = threading.RLock()
@@ -259,6 +441,13 @@ class ApprovalManager:
             operation_type,
             applicant,
         )
+        self._record_audit(
+            event_type=AuditEventType.APPROVAL_REQUESTED,
+            record=record,
+            actor=applicant,
+            decision=record.status.value,
+            message=f"Approval requested for operation '{operation_type}'.",
+        )
         return record
 
     def approve(self, record_id: str, approver: str, comment: str | None = None) -> ApprovalResult:
@@ -283,6 +472,13 @@ class ApprovalManager:
             self._save()
 
         logger.info("Approval record '%s' approved by '%s'", record_id, approver)
+        self._record_audit(
+            event_type=AuditEventType.APPROVAL_APPROVED,
+            record=updated_record,
+            actor=approver,
+            decision=updated_record.status.value,
+            message=f"Approval record '{record_id}' approved.",
+        )
         handler_result = self._run_post_approval_handler(updated_record)
         return ApprovalResult(
             record=updated_record,
@@ -313,6 +509,13 @@ class ApprovalManager:
             self._save()
 
         logger.warning("Approval record '%s' rejected by '%s': %s", record_id, approver, reason)
+        self._record_audit(
+            event_type=AuditEventType.APPROVAL_REJECTED,
+            record=updated_record,
+            actor=approver,
+            decision=updated_record.status.value,
+            message=f"Approval record '{record_id}' rejected: {reason}",
+        )
         return ApprovalResult(
             record=updated_record,
             approved=False,
@@ -374,6 +577,29 @@ class ApprovalManager:
         if not record.is_pending:
             raise ApprovalStateError(f"Approval record '{record_id}' has already been {record.status.value}.")
         return record
+
+    def _record_audit(
+        self,
+        *,
+        event_type: AuditEventType,
+        record: ApprovalRecord,
+        actor: str,
+        decision: str,
+        message: str,
+    ) -> None:
+        if self.audit_log is None:
+            return
+        self.audit_log.append(
+            event_type=event_type,
+            actor=actor,
+            tool_call_id=record.metadata.get("tool_call_id"),
+            tool_name=record.operation_type,
+            rule=record.operation_type,
+            decision=decision,
+            message=message,
+            metadata={"record_id": record.record_id, "status": record.status.value},
+            run_id=record.metadata.get("run_id"),
+        )
 
     def _run_post_approval_handler(self, record: ApprovalRecord) -> Any:
         handler = self._handlers.get(record.operation_type)
@@ -457,6 +683,9 @@ __all__ = [
     "ApprovalValidationError",
     "ApprovalHandlerError",
     "AuditError",
+    "AuditEvent",
+    "AuditEventType",
+    "AuditLog",
     "AuditManager",
     "AuditPersistenceError",
 ]

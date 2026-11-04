@@ -25,8 +25,12 @@ from smolagents.audit import (
     ApprovalStateError,
     ApprovalStatus,
     ApprovalValidationError,
+    AuditEventType,
+    AuditLog,
     AuditPersistenceError,
 )
+from smolagents.gate import ToolExecutionGate
+from smolagents.memory import ToolCall
 
 
 def _read_records(path):
@@ -245,3 +249,95 @@ def test_load_rejects_invalid_files(tmp_path, content):
 
     with pytest.raises(AuditPersistenceError):
         ApprovalManager(path)
+
+
+def test_audit_log_appends_and_reloads_events(tmp_path):
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path, run_id="run-1")
+
+    log.append(
+        event_type=AuditEventType.GATE_ALLOW,
+        actor="gate",
+        tool_call_id="call-1",
+        tool_name="echo",
+        decision="allowed",
+        message="allowed",
+    )
+    log.append(
+        event_type=AuditEventType.GATE_DENY,
+        actor="gate",
+        tool_call_id="call-2",
+        tool_name="echo",
+        rule="permission",
+        decision="denied",
+        message="not permitted",
+    )
+
+    assert len(log) == 2
+    assert len(path.read_text(encoding="utf-8").strip().splitlines()) == 2
+    reloaded = AuditLog(path)
+    assert len(reloaded) == 2
+    events = reloaded.events(run_id="run-1", tool_call_id="call-2")
+    assert len(events) == 1
+    assert events[0].rule == "permission"
+    assert events[0].decision == "denied"
+
+
+def test_audit_log_never_rewrites_existing_lines(tmp_path):
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path)
+    log.append(event_type=AuditEventType.GATE_ALLOW, actor="gate", tool_call_id="call-1", decision="allowed")
+    first_content = path.read_text(encoding="utf-8")
+
+    log.append(
+        event_type=AuditEventType.EXECUTION_COMPLETED, actor="gate", tool_call_id="call-1", decision="completed"
+    )
+
+    assert path.read_text(encoding="utf-8").startswith(first_content)
+
+
+def test_approval_manager_audits_requests_and_decisions(tmp_path):
+    log = AuditLog(tmp_path / "audit.jsonl", run_id="run-1")
+    manager = ApprovalManager(tmp_path / "approvals.json", audit_log=log)
+    record = manager.request_approval(
+        subject="tool",
+        operation_type="write_file",
+        content={"path": "draft.md"},
+        applicant="gate",
+        metadata={"tool_call_id": "call-1", "run_id": "run-1"},
+    )
+
+    manager.approve(record.record_id, approver="maintainer")
+
+    events = log.events(run_id="run-1", tool_call_id="call-1")
+    assert [event.event_type for event in events] == [
+        AuditEventType.APPROVAL_REQUESTED,
+        AuditEventType.APPROVAL_APPROVED,
+    ]
+    assert events[0].decision == "pending"
+    assert events[-1].decision == "approved"
+    assert events[-1].actor == "maintainer"
+
+
+def test_gate_denial_is_audited_with_rule_decision_actor_and_call_id(tmp_path):
+    log = AuditLog(tmp_path / "audit.jsonl", run_id="run-1")
+    gate = ToolExecutionGate(tools=[], audit_log=log, run_id="run-1", actor="gate")
+
+    outcome = gate.try_execute(ToolCall(name="missing_tool", arguments={}, id="call-1"))
+
+    assert not outcome.decision.allowed
+    events = log.events(run_id="run-1", tool_call_id="call-1")
+    assert len(events) == 1
+    assert events[0].event_type is AuditEventType.GATE_DENY
+    assert events[0].rule == "unknown_tool"
+    assert events[0].decision == "denied"
+    assert events[0].actor == "gate"
+    assert events[0].tool_call_id == "call-1"
+
+
+def test_audit_log_rejects_malformed_lines(tmp_path):
+    path = tmp_path / "audit.jsonl"
+    path.write_text("{not json\n", encoding="utf-8")
+
+    with pytest.raises(AuditPersistenceError, match="Malformed audit event"):
+        AuditLog(path)
