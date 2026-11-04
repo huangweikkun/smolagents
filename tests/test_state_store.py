@@ -40,7 +40,7 @@ from smolagents.state_store import (
     stop_reason_for,
 )
 from smolagents.tools import tool
-from smolagents.utils import AgentError, AgentMaxStepsError
+from smolagents.utils import AgentBudgetExceededError, AgentError, AgentMaxStepsError
 
 
 def _read_state(path):
@@ -406,3 +406,23 @@ def test_record_budget_and_pending_approvals(tmp_path):
 
     assert store.state.budget["steps_used"] == 1
     assert store.state.pending_approvals[0]["record_id"] == "record-2"
+
+
+def test_agent_stops_with_budget_exceeded_stop_reason(tmp_path, echo_tool):
+    state_path = tmp_path / "state.json"
+    agent = ToolCallingAgent(
+        model=EchoToolModel(),
+        tools=[echo_tool],
+        max_steps=3,
+        max_tool_calls=1,
+        state_store=state_path,
+    )
+
+    with pytest.raises(AgentBudgetExceededError, match="Tool call budget exceeded"):
+        agent.run("do the task")
+
+    data = _read_state(state_path)
+    assert data["status"] == "budget_exceeded"
+    assert data["exit_code"] == 3
+    assert data["stop_reason"] == "budget_exceeded"
+    assert data["budget"]["steps_used"] == 2

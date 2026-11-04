@@ -143,6 +143,10 @@ class CompletionVerificationError(HarnessError):
     """Raised when the executor returned but the business task is not actually completed."""
 
 
+class HarnessBudgetExceededError(HarnessError):
+    """Raised when the executor exceeds the configured tool-call budget."""
+
+
 class ModelAssembler:
     """Resolve a model specification into a [`Model`] instance.
 
@@ -280,6 +284,8 @@ class HarnessConfig:
         use_os_isolation (`bool`): Whether the sandbox requires an OS-level isolation backend.
         sandbox_config ([`SandboxConfig`], *optional*): Explicit sandbox configuration.
         verify_completion (`bool`): Whether the business task is verified after the executor returns.
+        max_tool_calls (`int`, *optional*): Maximum tool calls allowed per run; exceeding it stops with
+            status `budget_exceeded`.
         allowed_tools (`frozenset[str]`, *optional*): Gate allowlist; `None` allows every non-denied tool.
         denied_tools (`frozenset[str]`): Gate denylist.
     """
@@ -301,6 +307,7 @@ class HarnessConfig:
     use_os_isolation: bool = True
     sandbox_config: SandboxConfig | None = None
     verify_completion: bool = True
+    max_tool_calls: int | None = None
     allowed_tools: frozenset[str] | None = None
     denied_tools: frozenset[str] = frozenset()
 
@@ -321,6 +328,8 @@ class HarnessContext:
         approvals ([`ApprovalManager`]): Approval and audit manager of the harness.
         state_variables (`dict[str, Any]`): Variables shared with the gate and persisted in checkpoints.
         run_id (`str`): Identifier of the run.
+        max_tool_calls (`int`, *optional*): Tool-call budget for this run.
+        tool_calls_used (`int`): Number of tool calls already executed.
     """
 
     task: str
@@ -334,11 +343,20 @@ class HarnessContext:
     approvals: ApprovalManager
     state_variables: dict[str, Any] = field(default_factory=dict)
     run_id: str = ""
+    max_tool_calls: int | None = None
+    tool_calls_used: int = 0
 
     def execute_tool(
         self, name: str, arguments: dict[str, Any] | Any, *, call_id: str | None = None
     ) -> ToolExecutionResult:
-        """Execute a tool call through the gate, validating existence, arguments and permissions."""
+        """Execute a tool call through the gate, enforcing the tool-call budget first."""
+        if self.max_tool_calls is not None:
+            used = self.tool_calls_used + 1
+            if used > self.max_tool_calls:
+                raise HarnessBudgetExceededError(
+                    f"Tool call budget exceeded: {self.max_tool_calls} calls allowed, call {used} was rejected."
+                )
+            self.tool_calls_used = used
         return self.gate.execute(ToolCall(name=name, arguments=arguments, id=call_id or uuid.uuid4().hex))
 
 
@@ -400,6 +418,8 @@ class Harness:
             raise HarnessConfigurationError(f"Workspace '{self._workspace}' is not a directory.")
         if config.max_steps <= 0:
             raise HarnessConfigurationError("'max_steps' must be positive.")
+        if config.max_tool_calls is not None and config.max_tool_calls <= 0:
+            raise HarnessConfigurationError("'max_tool_calls' must be positive when provided.")
 
         runtime_dir = (
             Path(config.runtime_dir).expanduser().resolve()
@@ -544,6 +564,7 @@ class Harness:
                 approvals=self._approvals,
                 state_variables=state_variables,
                 run_id=run_id,
+                max_tool_calls=self.config.max_tool_calls,
             )
 
             output: Any = None
@@ -564,7 +585,12 @@ class Harness:
                 error = CompletionVerificationError(report.summary())
 
             status = ExecutionStatus.FAILED if error is not None else ExecutionStatus.COMPLETED
-            stop_reason = "completion_failed" if isinstance(error, CompletionVerificationError) else None
+            stop_reason: str | None = None
+            if isinstance(error, HarnessBudgetExceededError):
+                status = ExecutionStatus.BUDGET_EXCEEDED
+                stop_reason = "budget_exceeded"
+            elif isinstance(error, CompletionVerificationError):
+                stop_reason = "completion_failed"
             checkpoint_path = self._finalize_run(
                 task_text=task_text,
                 run_id=run_id,
@@ -731,6 +757,7 @@ __all__ = [
     "HarnessSandboxError",
     "HarnessStateError",
     "HarnessToolRegistryError",
+    "HarnessBudgetExceededError",
     "HarnessConfigurationError",
     "ModelAssembler",
     "ModelSpec",

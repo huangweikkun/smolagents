@@ -305,7 +305,8 @@ class SessionBoundaryFixValidator(TaskCompletionValidator):
 
     Conditions:
 
-    1. `tests_pass`: the configured test command exits with code 0.
+    1. `tests_pass`: the configured test command exits with code 0. Tests are re-run when the workspace changes
+       while they execute, so the result always describes a stable revision.
     2. `deliverable_present`: the fixed source file exists and is not empty.
     3. `deliverable_changed`: with a baseline, the fixed source file content differs from it.
     4. `existing_tests_untouched`: with a baseline, nothing under the protected test directory changed, except
@@ -318,6 +319,7 @@ class SessionBoundaryFixValidator(TaskCompletionValidator):
         generated_tests_dir (`str`, *optional*): Directory where the agent may add new tests.
         runner (`Callable`, *optional*): Inject a command runner for tests or non-`npm` projects.
         timeout_seconds (`float`, *optional*): Timeout applied to the default command runner.
+        test_reruns (`int`, *optional*): Extra test runs allowed when the workspace changes during a run.
     """
 
     task_name = "fix_tests"
@@ -330,6 +332,7 @@ class SessionBoundaryFixValidator(TaskCompletionValidator):
         generated_tests_dir: str = DEFAULT_GENERATED_TEST_DIR,
         runner: CommandRunner | None = None,
         timeout_seconds: float = 300.0,
+        test_reruns: int = 1,
     ):
         self.test_command = tuple(test_command)
         self.deliverable = Path(deliverable).as_posix()
@@ -337,6 +340,7 @@ class SessionBoundaryFixValidator(TaskCompletionValidator):
         self.generated_tests_dir = Path(generated_tests_dir).as_posix().rstrip("/")
         self.runner = runner
         self.timeout_seconds = timeout_seconds
+        self.test_reruns = max(test_reruns, 0)
 
     def run_checks(
         self,
@@ -354,8 +358,22 @@ class SessionBoundaryFixValidator(TaskCompletionValidator):
         return tuple(checks)
 
     def _check_tests_pass(self, workspace: Path) -> CompletionCheck:
-        result = self.run_test_command(workspace)
         command = " ".join(self.test_command)
+        result: CommandResult | None = None
+        stable = False
+        for _ in range(self.test_reruns + 1):
+            before = snapshot_files(workspace, self.excluded_dirs)
+            result = self.run_test_command(workspace)
+            after = snapshot_files(workspace, self.excluded_dirs)
+            if before == after:
+                stable = True
+                break
+        if not stable:
+            return CompletionCheck(
+                "tests_pass",
+                False,
+                "workspace changed while tests were running; test evidence is stale, rerun on a stable revision",
+            )
         if result.timed_out:
             return CompletionCheck("tests_pass", False, f"`{command}` timed out after {self.timeout_seconds:.0f}s")
         if result.returncode != 0:

@@ -235,6 +235,41 @@ def test_fix_tests_rejects_unmodified_deliverable(tmp_path):
     assert "deliverable_changed" in _failed_names(report)
 
 
+def test_fix_tests_reruns_when_workspace_changes_during_test_run(tmp_path):
+    root = _fix_repo(tmp_path)
+    (root / "src/auth/session-policy.ts").write_text("fixed\n", encoding="utf-8")
+    calls = {"count": 0}
+
+    def runner(command, cwd):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            (root / "src/auth/session-policy.ts").write_text("fixed-again\n", encoding="utf-8")
+        return CommandResult(0)
+
+    report = SessionBoundaryFixValidator(runner=runner).validate(root)
+
+    assert report.passed
+    assert calls["count"] == 2
+
+
+def test_fix_tests_rejects_unstable_workspace_during_test_run(tmp_path):
+    root = _fix_repo(tmp_path)
+    calls = {"count": 0}
+
+    def runner(command, cwd):
+        calls["count"] += 1
+        (root / "src/auth/session-policy.ts").write_text(f"version-{calls['count']}\n", encoding="utf-8")
+        return CommandResult(0)
+
+    report = SessionBoundaryFixValidator(runner=runner, test_reruns=1).validate(root)
+
+    assert not report.passed
+    assert "tests_pass" in _failed_names(report)
+    detail = next(check for check in report.checks if check.name == "tests_pass").detail
+    assert "stale" in detail
+    assert calls["count"] == 2
+
+
 def test_snapshot_files_skips_symlinks_and_excluded_dirs(tmp_path):
     root = _make_repo(tmp_path, {"src/app.ts": "app\n", "node_modules/pkg/index.js": "dep\n"})
     (root / "link.ts").symlink_to(root / "src/app.ts")

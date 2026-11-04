@@ -279,6 +279,26 @@ def test_harness_risk_policy_waits_for_approval_and_audits(tmp_path):
     assert len(harness.list_approvals(ApprovalStatus.PENDING)) == 1
 
 
+def test_harness_budget_exceeded_sets_stop_reason(tmp_path):
+    harness = _harness(
+        tmp_path,
+        _understand_repo(tmp_path),
+        tools=(EchoTool(),),
+        max_tool_calls=1,
+    )
+
+    def executor(context):
+        context.execute_tool("echo_text", {"text": "one"})
+        context.execute_tool("echo_text", {"text": "two"})
+
+    outcome = harness.run(executor)
+
+    assert outcome.status is ExecutionStatus.BUDGET_EXCEEDED
+    assert outcome.exit_code == 3
+    assert "budget exceeded" in outcome.error.lower()
+    assert StateStore.load(harness.state_path).stop_reason == "budget_exceeded"
+
+
 def test_harness_rejects_missing_workspace(tmp_path):
     with pytest.raises(HarnessConfigurationError, match="not a directory"):
         Harness(

@@ -108,6 +108,7 @@ from .remote_executors import BlaxelExecutor, DockerExecutor, E2BExecutor, Modal
 from .state_store import ExecutionStatus, StateStore, exit_code_for
 from .tools import BaseTool, Tool
 from .utils import (
+    AgentBudgetExceededError,
     AgentError,
     AgentExecutionError,
     AgentGenerationError,
@@ -516,6 +517,7 @@ You have been provided with these additional arguments, that you can access dire
         self.memory.steps.append(TaskStep(task=self.task, task_images=images))
 
         self._active_max_steps = max_steps
+        self._tool_calls_used = 0
         self._run_started_at = utc_now()
         run_id = getattr(self, "_checkpoint_run_id", None) or new_run_id()
         workspace_dir = getattr(self, "workspace_dir", None)
@@ -705,11 +707,12 @@ You have been provided with these additional arguments, that you can access dire
             self._finish_execution_state(ExecutionStatus.INTERRUPTED, error=e)
             raise
         except Exception as e:
-            status = (
-                ExecutionStatus.INTERRUPTED
-                if isinstance(e, AgentError) and str(e).startswith("Agent interrupted")
-                else ExecutionStatus.FAILED
-            )
+            if isinstance(e, AgentBudgetExceededError):
+                status = ExecutionStatus.BUDGET_EXCEEDED
+            elif isinstance(e, AgentError) and str(e).startswith("Agent interrupted"):
+                status = ExecutionStatus.INTERRUPTED
+            else:
+                status = ExecutionStatus.FAILED
             self._write_interrupted_checkpoint(max_steps=max_steps, status=status, error=e)
             self._finish_execution_state(status, error=e)
             raise
@@ -1510,6 +1513,8 @@ class ToolCallingAgent(MultiStepAgent):
             an approval from `approval_manager`.
         workspace_dir (`str` or `Path`, *optional*): Workspace whose file hashes are recorded in checkpoints. When
             set, resuming from a checkpoint written against a different workspace is refused.
+        max_tool_calls (`int`, *optional*): Maximum number of tool calls per run. Exceeding it stops the run with
+            status `budget_exceeded` instead of continuing.
         checkpoint_store ([`~checkpoint.CheckpointManager`], `str` or `Path`, *optional*): Checkpoint directory.
             When set, checkpoints are written after safe steps and before tool execution. Passing `None` (default)
             disables checkpointing.
@@ -1530,6 +1535,7 @@ class ToolCallingAgent(MultiStepAgent):
         audit_log: AuditLog | None = None,
         risk_policy: ToolRiskPolicy | None = None,
         workspace_dir: str | Path | None = None,
+        max_tool_calls: int | None = None,
         checkpoint_store: CheckpointManager | str | Path | None = None,
         **kwargs,
     ):
@@ -1568,6 +1574,10 @@ class ToolCallingAgent(MultiStepAgent):
         self.approval_manager = approval_manager
         self.audit_log = audit_log
         self.workspace_dir = Path(workspace_dir).expanduser().resolve() if workspace_dir is not None else None
+        if max_tool_calls is not None and max_tool_calls <= 0:
+            raise ValueError("'max_tool_calls' must be positive when provided.")
+        self.max_tool_calls = max_tool_calls
+        self._tool_calls_used = 0
         self._workspace_fingerprint: dict[str, str] | None = None
         self._run_started_at: str | None = None
         self.checkpoint_store = (
@@ -1719,6 +1729,7 @@ class ToolCallingAgent(MultiStepAgent):
         def process_single_tool_call(tool_call: ToolCall) -> ToolOutput:
             tool_name = tool_call.name
             tool_arguments = tool_call.arguments or {}
+            self._charge_tool_call_budget()
             self.logger.log(
                 Panel(Text(f"Calling tool: '{tool_name}' with arguments: {tool_arguments}")),
                 level=LogLevel.INFO,
@@ -1765,6 +1776,19 @@ class ToolCallingAgent(MultiStepAgent):
             memory_step.observations.rstrip("\n") if memory_step.observations else memory_step.observations
         )
 
+    def _charge_tool_call_budget(self) -> None:
+        """Increment the tool-call counter and fail closed once the budget is exhausted."""
+        max_tool_calls = getattr(self, "max_tool_calls", None)
+        if max_tool_calls is None:
+            return
+        used = getattr(self, "_tool_calls_used", 0) + 1
+        if used > max_tool_calls:
+            raise AgentBudgetExceededError(
+                f"Tool call budget exceeded: {max_tool_calls} calls allowed, call {used} was rejected.",
+                self.logger,
+            )
+        self._tool_calls_used = used
+
     def execute_tool_call(self, tool_name: str, arguments: dict[str, str] | str) -> Any:
         """
         Execute a tool or managed agent with the provided arguments.
@@ -1776,7 +1800,11 @@ class ToolCallingAgent(MultiStepAgent):
         Args:
             tool_name (`str`): Name of the tool or managed agent to execute.
             arguments (dict[str, str] | str): Arguments passed to the tool call.
+
+        Returns:
+            `Any`: The tool's output, converted to a safe type when needed.
         """
+        self._charge_tool_call_budget()
         result = self.tool_execution_gate.execute(ToolCall(name=tool_name, arguments=arguments, id=""))
         return result.output
 

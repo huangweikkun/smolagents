@@ -137,6 +137,16 @@ class AgentGenerationError(AgentError):
     pass
 
 
+class AgentBudgetExceededError(AgentGenerationError):
+    """Raised when a run exceeds its configured tool-call or turn budget.
+
+    It subclasses [`AgentGenerationError`] so step-level handlers re-raise it instead of iterating: the run must
+    stop with an explicit budget stop reason rather than pretend to succeed.
+    """
+
+    pass
+
+
 def make_json_serializable(obj: Any) -> Any:
     """Recursive function to make objects JSON serializable"""
     if obj is None:
