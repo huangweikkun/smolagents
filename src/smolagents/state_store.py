@@ -50,6 +50,7 @@ class ExecutionStatus(str, Enum):
     COMPLETED = "completed"
     MAX_STEPS = "max_steps"
     BUDGET_EXCEEDED = "budget_exceeded"
+    WAITING_APPROVAL = "waiting_approval"
     INTERRUPTED = "interrupted"
     FAILED = "failed"
 
@@ -61,6 +62,7 @@ class ExitCode(IntEnum):
     FAILED = 1
     MAX_STEPS = 2
     BUDGET_EXCEEDED = 3
+    WAITING_APPROVAL = 4
     INTERRUPTED = 130
 
 
@@ -73,6 +75,7 @@ class StopReason(str, Enum):
     INTERRUPTED = "interrupted"
     FAILED = "failed"
     COMPLETION_FAILED = "completion_failed"
+    APPROVAL_REQUIRED = "approval_required"
 
 
 STATUS_EXIT_CODES: dict[ExecutionStatus, int | None] = {
@@ -80,6 +83,7 @@ STATUS_EXIT_CODES: dict[ExecutionStatus, int | None] = {
     ExecutionStatus.COMPLETED: int(ExitCode.SUCCESS),
     ExecutionStatus.MAX_STEPS: int(ExitCode.MAX_STEPS),
     ExecutionStatus.BUDGET_EXCEEDED: int(ExitCode.BUDGET_EXCEEDED),
+    ExecutionStatus.WAITING_APPROVAL: int(ExitCode.WAITING_APPROVAL),
     ExecutionStatus.INTERRUPTED: int(ExitCode.INTERRUPTED),
     ExecutionStatus.FAILED: int(ExitCode.FAILED),
 }
@@ -88,6 +92,7 @@ STATUS_STOP_REASONS: dict[ExecutionStatus, StopReason] = {
     ExecutionStatus.COMPLETED: StopReason.COMPLETED,
     ExecutionStatus.MAX_STEPS: StopReason.MAX_STEPS,
     ExecutionStatus.BUDGET_EXCEEDED: StopReason.BUDGET_EXCEEDED,
+    ExecutionStatus.WAITING_APPROVAL: StopReason.APPROVAL_REQUIRED,
     ExecutionStatus.INTERRUPTED: StopReason.INTERRUPTED,
     ExecutionStatus.FAILED: StopReason.FAILED,
 }

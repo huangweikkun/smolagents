@@ -155,8 +155,11 @@ class SandboxConfig:
 
     Args:
         root_dir (`str` or `Path`, *optional*): Existing sandbox root. When omitted a temporary directory is created.
+        workspace_root (`str` or `Path`, *optional*): Real workspace used by coding tools. When set, relative file
+            paths resolve against it, it becomes the writable root by default, and `destroy()` never deletes it.
         readable_dirs (`tuple[str | Path, ...]`, *optional*): Extra read-only roots outside the sandbox root.
-        writable_dir (`str` or `Path`, *optional*): Writable root inside the sandbox root. Defaults to `root/workspace`.
+        writable_dir (`str` or `Path`, *optional*): Writable root. Defaults to `workspace_root` when set, else
+            `root/workspace`.
         allowed_commands (`frozenset[str]`, *optional*): Command whitelist by basename.
         denied_write_extensions (`frozenset[str]`, *optional*): File extensions rejected for writes.
         allowed_write_extensions (`frozenset[str] | None`, *optional*): If set, only these extensions may be written.
@@ -172,6 +175,7 @@ class SandboxConfig:
     """
 
     root_dir: str | Path | None = None
+    workspace_root: str | Path | None = None
     readable_dirs: tuple[str | Path, ...] = ()
     writable_dir: str | Path | None = None
     allowed_commands: frozenset[str] = DEFAULT_ALLOWED_COMMANDS
@@ -271,14 +275,21 @@ class Sandbox:
 
         self.workspace = self.root / "workspace"
         self.tmp_dir = self.root / "tmp"
+        if self.config.workspace_root is not None:
+            self.workspace_root = Path(self.config.workspace_root).expanduser().resolve()
+            if not self.workspace_root.is_dir():
+                raise SandboxError(f"Workspace root '{self.workspace_root}' is not a directory.")
+        else:
+            self.workspace_root = self.workspace
         self.writable_root = (
             Path(self.config.writable_dir).expanduser().resolve()
             if self.config.writable_dir is not None
-            else self.workspace
+            else self.workspace_root
         )
-        self._assert_path_within(self.writable_root, [self.root], "writable_dir")
+        self._assert_path_within(self.writable_root, [self.root, self.workspace_root], "writable_dir")
         self.readable_roots = [
             self.workspace,
+            self.workspace_root,
             self.writable_root,
             *[Path(path).expanduser().resolve() for path in self.config.readable_dirs],
         ]
@@ -328,7 +339,7 @@ class Sandbox:
             shutil.rmtree(self.tmp_dir, ignore_errors=True)
             if self._owns_root:
                 shutil.rmtree(self.root, ignore_errors=True)
-            elif self.writable_root != self.workspace:
+            elif self.writable_root not in (self.workspace, self.workspace_root):
                 shutil.rmtree(self.writable_root, ignore_errors=True)
 
     close = destroy
@@ -375,7 +386,7 @@ class Sandbox:
         self._ensure_active()
         target = Path(path).expanduser()
         if not target.is_absolute():
-            target = self.workspace / target
+            target = self.writable_root / target
         target = target.resolve(strict=False)
         self._assert_path_within(target, self.readable_roots, "read path")
         if not target.exists():
@@ -463,7 +474,7 @@ class Sandbox:
         self._ensure_active()
         target = Path(path).expanduser()
         if not target.is_absolute():
-            target = self.workspace / target
+            target = self.writable_root / target
         target = target.resolve(strict=False)
         self._assert_path_within(target, self.readable_roots, "list path")
         if not target.is_dir():
@@ -674,6 +685,9 @@ class Sandbox:
                 prefix.extend(["--ro-bind", system_path, system_path])
         prefix.extend(["--bind", str(self.root), str(self.root)])
         prefix.extend(["--bind", str(self.tmp_dir), str(self.tmp_dir)])
+        for writable in (self.writable_root, self.workspace_root):
+            if not writable.is_relative_to(self.root):
+                prefix.extend(["--bind", str(writable), str(writable)])
         for readable in self.config.readable_dirs:
             resolved = str(Path(readable).expanduser().resolve())
             if Path(resolved).exists():

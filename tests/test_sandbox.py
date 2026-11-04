@@ -217,3 +217,29 @@ def test_sandbox_denials_are_audited(tmp_path):
     assert {event.rule for event in events} == {"path_escape", "command_not_allowed"}
     assert all(event.event_type is AuditEventType.SANDBOX_DENY for event in events)
     assert all(event.actor == "sandbox" and event.decision == "denied" for event in events)
+
+
+def test_workspace_root_is_writable_and_survives_destroy(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "a.txt").write_text("x", encoding="utf-8")
+    sandbox = Sandbox.create(
+        SandboxConfig(
+            root_dir=tmp_path / "sandbox",
+            workspace_root=workspace,
+            use_os_isolation=False,
+        )
+    )
+    try:
+        assert sandbox.read_text("a.txt") == "x"
+        sandbox.write_text("b.txt", "y")
+        assert (workspace / "b.txt").read_text(encoding="utf-8") == "y"
+        result = sandbox.run_command(["ls", "."])
+        assert result.returncode == 0
+        assert "a.txt" in result.stdout
+    finally:
+        sandbox.destroy()
+
+    assert workspace.exists()
+    assert (workspace / "a.txt").exists()
+    assert (workspace / "b.txt").exists()

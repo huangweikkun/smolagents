@@ -72,7 +72,12 @@ from .checkpoint import (
     workspace_fingerprint,
 )
 from .default_tools import TOOL_MAPPING, FinalAnswerTool
-from .gate import ToolExecutionGate, ToolPermissionPolicy, ToolRiskPolicy
+from .gate import (
+    ToolApprovalRequiredError,
+    ToolExecutionGate,
+    ToolPermissionPolicy,
+    ToolRiskPolicy,
+)
 from .local_python_executor import BASE_BUILTIN_MODULES, LocalPythonExecutor, PythonExecutor, fix_final_answer_code
 from .memory import (
     ActionStep,
@@ -108,6 +113,7 @@ from .remote_executors import BlaxelExecutor, DockerExecutor, E2BExecutor, Modal
 from .state_store import ExecutionStatus, StateStore, exit_code_for
 from .tools import BaseTool, Tool
 from .utils import (
+    AgentApprovalRequiredError,
     AgentBudgetExceededError,
     AgentError,
     AgentExecutionError,
@@ -675,6 +681,12 @@ You have been provided with these additional arguments, that you can access dire
                             returned_final_answer = True
                             action_step.is_final_answer = True
 
+                except AgentApprovalRequiredError as e:
+                    # The tool call is safely parked in the checkpoint; stop before pretending the step completed.
+                    action_step.error = e
+                    self._approval_pending_step = self.step_number
+                    self._approval_pending_tool_calls = getattr(self, "_checkpoint_pending_tool_calls", None)
+                    raise e
                 except AgentGenerationError as e:
                     # Agent generation errors are not caused by a Model error but an implementation error: so we should raise them and exit.
                     raise e
@@ -707,13 +719,17 @@ You have been provided with these additional arguments, that you can access dire
             self._finish_execution_state(ExecutionStatus.INTERRUPTED, error=e)
             raise
         except Exception as e:
-            if isinstance(e, AgentBudgetExceededError):
-                status = ExecutionStatus.BUDGET_EXCEEDED
-            elif isinstance(e, AgentError) and str(e).startswith("Agent interrupted"):
-                status = ExecutionStatus.INTERRUPTED
+            if isinstance(e, AgentApprovalRequiredError):
+                status = ExecutionStatus.WAITING_APPROVAL
+                self._write_approval_checkpoint(max_steps=max_steps, status=status, error=e)
             else:
-                status = ExecutionStatus.FAILED
-            self._write_interrupted_checkpoint(max_steps=max_steps, status=status, error=e)
+                if isinstance(e, AgentBudgetExceededError):
+                    status = ExecutionStatus.BUDGET_EXCEEDED
+                elif isinstance(e, AgentError) and str(e).startswith("Agent interrupted"):
+                    status = ExecutionStatus.INTERRUPTED
+                else:
+                    status = ExecutionStatus.FAILED
+                self._write_interrupted_checkpoint(max_steps=max_steps, status=status, error=e)
             self._finish_execution_state(status, error=e)
             raise
         else:
@@ -726,6 +742,29 @@ You have been provided with these additional arguments, that you can access dire
                 output=final_answer,
             )
             self._finish_execution_state(status, output=final_answer)
+
+    def _write_approval_checkpoint(
+        self,
+        *,
+        max_steps: int,
+        status: ExecutionStatus,
+        error: BaseException,
+    ) -> None:
+        """Persist the pending tool calls of an approval-paused step before stopping the run."""
+        step_number = getattr(self, "_approval_pending_step", None) or self.step_number
+        pending_tool_calls = getattr(self, "_approval_pending_tool_calls", None)
+        self._write_checkpoint(
+            max_steps=max_steps,
+            status=status,
+            step_number=step_number,
+            next_step_number=step_number,
+            in_flight_step_number=step_number,
+            in_flight_phase="tools_pending",
+            in_flight_tool_calls=pending_tool_calls,
+            error=error,
+        )
+        self._approval_pending_step = None
+        self._approval_pending_tool_calls = None
 
     def _write_interrupted_checkpoint(self, *, max_steps: int, status: ExecutionStatus, error: BaseException) -> None:
         next_step = self._checkpoint_next_step_number()
@@ -1734,12 +1773,17 @@ class ToolCallingAgent(MultiStepAgent):
                 Panel(Text(f"Calling tool: '{tool_name}' with arguments: {tool_arguments}")),
                 level=LogLevel.INFO,
             )
-            result = self.tool_execution_gate.execute(tool_call)
+            try:
+                result = self.tool_execution_gate.execute(tool_call)
+            except ToolApprovalRequiredError as error:
+                raise AgentApprovalRequiredError(
+                    f"Approval required for tool '{tool_name}' (call {tool_call.id}): {error.decision.message}",
+                    self.logger,
+                ) from error
             self.logger.log(
                 f"Observations: {result.observation.replace('[', '|')}",  # escape potential rich-tag-like components
                 level=LogLevel.INFO,
             )
-
             return ToolOutput(
                 id=result.tool_call_id,
                 output=result.output,
@@ -1871,6 +1915,14 @@ class ToolCallingAgent(MultiStepAgent):
             )
             return deserialize_value(state.final_output)
 
+        if state.status == ExecutionStatus.WAITING_APPROVAL.value:
+            return self._resume_waiting_approval(
+                state,
+                max_steps=self._active_max_steps,
+                images=task_images,
+                stream=stream,
+            )
+
         if self.state_store is not None and not self.state_store.is_started:
             self.state_store.start(
                 task=self.task,
@@ -1905,6 +1957,86 @@ class ToolCallingAgent(MultiStepAgent):
             images=task_images,
             start_step=next_step,
             skip_planning_at_step=skip_planning_at_step,
+        )
+        if stream:
+            return run_stream
+        steps = list(run_stream)
+        return steps[-1].output
+
+    def _resume_waiting_approval(
+        self,
+        state: CheckpointState,
+        *,
+        max_steps: int,
+        images: Any,
+        stream: bool,
+    ) -> Any:
+        """Replay the tool calls that were paused for approval, then continue the run.
+
+        The replay uses the original `tool_call_id`, so the approval record created before the pause matches and the
+        call executes exactly once. If the record is still pending, the gate raises again and the checkpoint stays
+        in `waiting_approval`.
+        """
+        pending = state.in_flight_step or {}
+        serialized_calls = pending.get("tool_calls") or []
+        if not serialized_calls:
+            raise CheckpointValidationError(
+                f"Checkpoint '{state.checkpoint_id}' is waiting for approval but has no pending tool calls."
+            )
+        tool_calls = [deserialize_tool_call(item) for item in serialized_calls]
+        self._tool_calls_used = 0
+        results = []
+        for tool_call in tool_calls:
+            self._charge_tool_call_budget()
+            try:
+                results.append(self.tool_execution_gate.execute(tool_call))
+            except ToolApprovalRequiredError as error:
+                raise AgentApprovalRequiredError(
+                    f"Tool call '{tool_call.id}' is still waiting for approval: {error.decision.message}",
+                    self.logger,
+                ) from error
+
+        if self.state_store is not None and not self.state_store.is_started:
+            self.state_store.start(
+                task=self.task,
+                agent_class=type(self).__name__,
+                agent_name=self.name,
+                model_id=getattr(self.model, "model_id", None),
+                max_steps=max_steps,
+                planning_interval=self.planning_interval,
+                messages=self.write_memory_to_messages(),
+                run_id=self._checkpoint_run_id,
+                budget=state.budget.dict(),
+                pending_approvals=state.pending_approvals,
+            )
+
+        last_step = self.memory.steps[-1] if self.memory.steps else None
+        action_output = None
+        if isinstance(last_step, ActionStep) and last_step.step_number == state.step_number:
+            last_step.tool_calls = tool_calls
+            last_step.observations = "\n".join(result.observation for result in results)
+            last_step.action_output = results[-1].output if results else None
+            last_step.is_final_answer = any(result.is_final_answer for result in results)
+            action_output = last_step.action_output
+        elif results:
+            action_output = results[-1].output
+
+        self._write_checkpoint(
+            max_steps=max_steps,
+            step_number=state.step_number,
+            next_step_number=state.step_number + 1,
+            output=action_output,
+        )
+        self.logger.log(
+            f"Approval received; replayed {len(tool_calls)} pending tool call(s) and resumed at step "
+            f"{state.step_number + 1}.",
+            level=LogLevel.INFO,
+        )
+        run_stream = self._run_stream(
+            task=self.task,
+            max_steps=max_steps,
+            images=images,
+            start_step=state.step_number + 1,
         )
         if stream:
             return run_stream

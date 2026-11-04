@@ -147,6 +147,16 @@ class AgentBudgetExceededError(AgentGenerationError):
     pass
 
 
+class AgentApprovalRequiredError(AgentGenerationError):
+    """Raised when a tool call needs approval before it can run.
+
+    It subclasses [`AgentGenerationError`] so the run pauses with status `waiting_approval` and can be resumed after
+    an approver accepts the pending record.
+    """
+
+    pass
+
+
 def make_json_serializable(obj: Any) -> Any:
     """Recursive function to make objects JSON serializable"""
     if obj is None:
