@@ -325,6 +325,42 @@ def deserialize_state(state: dict[str, Any]) -> dict[str, Any]:
     return {key: deserialize_value(value) for key, value in state.items()}
 
 
+def workspace_fingerprint(path: str | Path) -> dict[str, str]:
+    """Hash the current workspace files so a checkpoint can detect later changes."""
+    # Imported lazily to keep checkpoint independent from completion at import time.
+    from .completion import snapshot_files
+
+    return snapshot_files(path)
+
+
+def validate_workspace_unchanged(checkpoint: CheckpointState, workspace_dir: str | Path) -> None:
+    """Refuse to resume when the workspace changed after the checkpoint was written.
+
+    A changed workspace invalidates both the recorded evidence and the pending approvals: files may have been
+    edited, tests may describe a different revision, and prior approvals may refer to obsolete content. Callers
+    should stop and wait for a human to reconcile instead of replaying.
+
+    Raises:
+        CheckpointValidationError: If the workspace fingerprint differs from the checkpoint.
+    """
+    if checkpoint.workspace_fingerprint is None:
+        return
+    current = workspace_fingerprint(workspace_dir)
+    if current == checkpoint.workspace_fingerprint:
+        return
+    changed = sorted(
+        path
+        for path in set(current) | set(checkpoint.workspace_fingerprint)
+        if current.get(path) != checkpoint.workspace_fingerprint.get(path)
+    )
+    shown = ", ".join(changed[:5])
+    suffix = f" (+{len(changed) - 5} more)" if len(changed) > 5 else ""
+    raise CheckpointValidationError(
+        "Workspace changed since the checkpoint was written; evidence and approvals are stale, "
+        f"refusing to resume. Changed paths: {shown}{suffix}."
+    )
+
+
 def build_plans(steps: list[Any]) -> list[dict[str, Any]]:
     plans = []
     for index, step in enumerate(steps):
@@ -432,6 +468,7 @@ class CheckpointState:
     memory_system_prompt: str
     memory_steps: list[dict[str, Any]]
     state: dict[str, Any]
+    workspace_fingerprint: dict[str, str] | None = None
     checkpoint_id: str = ""
     sequence: int = 0
     created_at: str = ""
@@ -482,6 +519,7 @@ class CheckpointState:
             "memory_system_prompt": self.memory_system_prompt,
             "memory_steps": self.memory_steps,
             "state": self.state,
+            "workspace_fingerprint": self.workspace_fingerprint,
             "final_output": self.final_output,
             "error": self.error,
             "in_flight_step": self.in_flight_step,
@@ -499,6 +537,7 @@ class CheckpointState:
             memory_system_prompt=data.get("memory_system_prompt", ""),
             memory_steps=data.get("memory_steps", []),
             state=data.get("state", {}),
+            workspace_fingerprint=data.get("workspace_fingerprint"),
             checkpoint_id=data.get("checkpoint_id", ""),
             sequence=data.get("sequence", 0),
             created_at=data.get("created_at", ""),
@@ -702,4 +741,6 @@ __all__ = [
     "serialize_value",
     "utc_now",
     "validate_checkpoint_compatibility",
+    "validate_workspace_unchanged",
+    "workspace_fingerprint",
 ]

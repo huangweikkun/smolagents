@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .audit import AuditEventType, AuditLog
 from .tools import Tool
 
 
@@ -238,9 +239,26 @@ def _make_preexec_fn(config: SandboxConfig):
 
 
 class Sandbox:
-    """Lifecycle-managed isolated workspace for file and command operations."""
+    """Lifecycle-managed isolated workspace for file and command operations.
 
-    def __init__(self, config: SandboxConfig | None = None):
+    Args:
+        config ([`SandboxConfig`], *optional*): Sandbox configuration.
+        audit_log ([`AuditLog`], *optional*): Append-only log receiving sandbox denials.
+        run_id (`str`, *optional*): Run identifier attached to audit events.
+        actor (`str`): Actor recorded for audit events produced by the sandbox.
+    """
+
+    def __init__(
+        self,
+        config: SandboxConfig | None = None,
+        *,
+        audit_log: AuditLog | None = None,
+        run_id: str | None = None,
+        actor: str = "sandbox",
+    ):
+        self.audit_log = audit_log
+        self.run_id = run_id
+        self.actor = actor
         self.config = config or SandboxConfig()
         if self.config.max_file_size_bytes <= 0 or self.config.max_output_bytes <= 0:
             raise SandboxError("File and output limits must be positive.")
@@ -268,8 +286,15 @@ class Sandbox:
         self._active = False
 
     @classmethod
-    def create(cls, config: SandboxConfig | None = None) -> "Sandbox":
-        sandbox = cls(config)
+    def create(
+        cls,
+        config: SandboxConfig | None = None,
+        *,
+        audit_log: AuditLog | None = None,
+        run_id: str | None = None,
+        actor: str = "sandbox",
+    ) -> "Sandbox":
+        sandbox = cls(config, audit_log=audit_log, run_id=run_id, actor=actor)
         sandbox.start()
         return sandbox
 
@@ -320,15 +345,31 @@ class Sandbox:
         if not self._active:
             raise SandboxLifecycleError("Sandbox is not active; call start() before using it.")
 
-    @staticmethod
-    def _assert_path_within(target: Path, roots: list[Path], label: str) -> None:
+    def audit_denial(self, *, rule: str, message: str, metadata: dict[str, Any] | None = None) -> None:
+        """Record a sandbox denial in the audit log when one is configured."""
+        if self.audit_log is None:
+            return
+        self.audit_log.append(
+            event_type=AuditEventType.SANDBOX_DENY,
+            actor=self.actor,
+            run_id=self.run_id,
+            tool_name="sandbox",
+            rule=rule,
+            decision="denied",
+            message=message,
+            metadata=metadata,
+        )
+
+    def _assert_path_within(self, target: Path, roots: list[Path], label: str) -> None:
         for root in roots:
             try:
                 if os.path.commonpath([str(target), str(root)]) == str(root):
                     return
             except ValueError:
                 continue
-        raise SandboxPathViolation(f"{label} '{target}' is outside the allowed sandbox boundary.")
+        message = f"{label} '{target}' is outside the allowed sandbox boundary."
+        self.audit_denial(rule="path_escape", message=message, metadata={"path": str(target), "label": label})
+        raise SandboxPathViolation(message)
 
     def _resolve_read_path(self, path: str | Path) -> Path:
         self._ensure_active()
@@ -498,9 +539,9 @@ class Sandbox:
     def _parse_command(self, command: str | list[str] | tuple[str, ...]) -> list[str]:
         if isinstance(command, str):
             if any(character in command for character in ";&|><`$\n"):
-                raise SandboxSecurityError(
-                    "Shell operators and command substitution are not allowed; pass an argument list instead."
-                )
+                message = "Shell operators and command substitution are not allowed; pass an argument list instead."
+                self.audit_denial(rule="shell_operator", message=message, metadata={"command": command})
+                raise SandboxSecurityError(message)
             try:
                 argv = shlex.split(command)
             except ValueError as e:
@@ -518,7 +559,9 @@ class Sandbox:
         if resolved is None:
             raise SandboxCommandError(f"Command '{command}' was not found on PATH.")
         if Path(resolved).name not in self.config.allowed_commands:
-            raise SandboxCommandError(f"Command '{Path(resolved).name}' is not in the allowed command whitelist.")
+            message = f"Command '{Path(resolved).name}' is not in the allowed command whitelist."
+            self.audit_denial(rule="command_not_allowed", message=message, metadata={"command": command})
+            raise SandboxCommandError(message)
         return resolved
 
     def _resolve_command_cwd(self, cwd: str | Path | None) -> Path:
@@ -572,7 +615,9 @@ class Sandbox:
         merged = {**self.config.env, **(extra_env or {})}
         for key, value in merged.items():
             if key in DENIED_ENVIRONMENT_KEYS:
-                raise SandboxSecurityError(f"Environment variable '{key}' is not allowed in the sandbox.")
+                message = f"Environment variable '{key}' is not allowed in the sandbox."
+                self.audit_denial(rule="environment_denied", message=message, metadata={"key": key})
+                raise SandboxSecurityError(message)
             if not isinstance(key, str) or not isinstance(value, str):
                 raise SandboxSecurityError("Environment keys and values must be strings.")
             environment[key] = value

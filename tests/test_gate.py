@@ -15,7 +15,7 @@
 import pytest
 
 from smolagents.agents import ToolCallingAgent
-from smolagents.audit import ApprovalManager, AuditEventType, AuditLog
+from smolagents.audit import ApprovalManager, ApprovalStatus, AuditEventType, AuditLog
 from smolagents.default_tools import FinalAnswerTool
 from smolagents.gate import (
     GateDecisionStatus,
@@ -285,3 +285,33 @@ def test_high_risk_call_without_approval_manager_is_denied():
     assert outcome.decision.status is GateDecisionStatus.DENIED
     assert outcome.decision.rule == "approval_unavailable"
     assert tool.calls == 0
+
+
+def test_tool_calling_agent_wires_audit_and_approval(tmp_path):
+    audit = AuditLog(tmp_path / "audit.jsonl")
+    approvals = ApprovalManager(tmp_path / "approvals.json", audit_log=audit)
+    tool = WritingTool(tmp_path / "repo")
+    agent = ToolCallingAgent(
+        model=DummyModel(),
+        tools=[tool],
+        risk_policy=ToolRiskPolicy(tool_levels={tool.name: ToolRiskLevel.HIGH}),
+        approval_manager=approvals,
+        audit_log=audit,
+    )
+    arguments = {"path": "draft.md", "content": "hello"}
+
+    with pytest.raises(ToolApprovalRequiredError):
+        agent.execute_tool_call(tool.name, arguments)
+
+    assert tool.calls == 0
+    waiting = [event for event in audit.events() if event.event_type is AuditEventType.GATE_WAITING_APPROVAL]
+    assert waiting and waiting[0].tool_call_id == ""
+
+    record = approvals.list_records(status=ApprovalStatus.PENDING)[0]
+    approvals.approve(record.record_id, approver="maintainer")
+
+    assert agent.execute_tool_call(tool.name, arguments) is not None
+    assert tool.calls == 1
+    with pytest.raises(ToolDuplicateCallError):
+        agent.execute_tool_call(tool.name, arguments)
+    assert tool.calls == 1

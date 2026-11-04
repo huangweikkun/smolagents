@@ -33,9 +33,11 @@ from smolagents.state_store import (
     StateStore,
     StateStoreError,
     StepEvidence,
+    StopReason,
     collect_workspace_info,
     exit_code_for,
     serialize_messages,
+    stop_reason_for,
 )
 from smolagents.tools import tool
 from smolagents.utils import AgentError, AgentMaxStepsError
@@ -293,6 +295,10 @@ def test_tool_calling_agent_persists_completed_state(tmp_path):
     assert data["evidence"][0]["completed"] is True
     assert data["messages"]
     assert data["workspace"]["cwd"]
+    assert data["run_id"]
+    assert data["stop_reason"] == "completed"
+    assert data["budget"]["max_steps"] == agent.max_steps
+    assert data["budget"]["steps_used"] >= 1
 
 
 def test_tool_calling_agent_persists_interrupted_state(tmp_path, echo_tool):
@@ -342,3 +348,61 @@ def test_tool_calling_agent_without_state_store_writes_nothing(tmp_path):
 
     assert agent.state_store is None
     assert list(tmp_path.glob("state.json")) == []
+
+
+def test_start_records_run_id_and_budget(tmp_path):
+    store = StateStore(tmp_path / "state.json")
+
+    store.start(
+        task="task",
+        agent_class="ToolCallingAgent",
+        max_steps=3,
+        run_id="run-1",
+        budget={"max_steps": 3, "steps_used": 0, "input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+    )
+
+    data = _read_state(store.path)
+    assert data["run_id"] == "run-1"
+    assert data["budget"]["max_steps"] == 3
+    assert data["stop_reason"] is None
+
+
+def test_finish_records_stop_reason_budget_and_pending_approvals(tmp_path):
+    store = StateStore(tmp_path / "state.json")
+    store.start(task="task", agent_class="ToolCallingAgent", max_steps=2)
+
+    store.finish(
+        status=ExecutionStatus.MAX_STEPS,
+        output="stopped",
+        budget={"max_steps": 2, "steps_used": 2, "input_tokens": 3, "output_tokens": 4, "total_tokens": 7},
+        pending_approvals=[{"record_id": "record-1", "status": "pending"}],
+    )
+
+    assert store.state.stop_reason == "max_steps"
+    assert store.state.budget["total_tokens"] == 7
+    assert store.state.pending_approvals == [{"record_id": "record-1", "status": "pending"}]
+    loaded = StateStore.load(store.path)
+    assert loaded.stop_reason == "max_steps"
+    assert loaded.budget["steps_used"] == 2
+    assert loaded.pending_approvals[0]["record_id"] == "record-1"
+
+
+def test_finish_accepts_explicit_stop_reason(tmp_path):
+    store = StateStore(tmp_path / "state.json")
+    store.start(task="task", agent_class="ToolCallingAgent", max_steps=1)
+
+    store.finish(status=ExecutionStatus.COMPLETED, stop_reason=StopReason.COMPLETION_FAILED)
+
+    assert store.state.stop_reason == "completion_failed"
+    assert stop_reason_for(ExecutionStatus.INTERRUPTED) == "interrupted"
+
+
+def test_record_budget_and_pending_approvals(tmp_path):
+    store = StateStore(tmp_path / "state.json")
+    store.start(task="task", agent_class="ToolCallingAgent", max_steps=2)
+
+    store.record_budget({"max_steps": 2, "steps_used": 1, "input_tokens": 1, "output_tokens": 1, "total_tokens": 2})
+    store.record_pending_approvals([{"record_id": "record-2", "status": "pending"}])
+
+    assert store.state.budget["steps_used"] == 1
+    assert store.state.pending_approvals[0]["record_id"] == "record-2"

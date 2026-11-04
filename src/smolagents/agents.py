@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     import PIL.Image
 
 from .agent_types import handle_agent_output_types
-from .audit import ApprovalManager, ApprovalStatus
+from .audit import ApprovalManager, ApprovalStatus, AuditLog
 from .checkpoint import (
     CheckpointInFlightError,
     CheckpointManager,
@@ -68,9 +68,11 @@ from .checkpoint import (
     serialize_value,
     utc_now,
     validate_checkpoint_compatibility,
+    validate_workspace_unchanged,
+    workspace_fingerprint,
 )
 from .default_tools import TOOL_MAPPING, FinalAnswerTool
-from .gate import ToolExecutionGate, ToolPermissionPolicy
+from .gate import ToolExecutionGate, ToolPermissionPolicy, ToolRiskPolicy
 from .local_python_executor import BASE_BUILTIN_MODULES, LocalPythonExecutor, PythonExecutor, fix_final_answer_code
 from .memory import (
     ActionStep,
@@ -513,6 +515,12 @@ You have been provided with these additional arguments, that you can access dire
         )
         self.memory.steps.append(TaskStep(task=self.task, task_images=images))
 
+        self._active_max_steps = max_steps
+        self._run_started_at = utc_now()
+        run_id = getattr(self, "_checkpoint_run_id", None) or new_run_id()
+        workspace_dir = getattr(self, "workspace_dir", None)
+        self._workspace_fingerprint = workspace_fingerprint(workspace_dir) if workspace_dir is not None else None
+
         if getattr(self, "state_store", None) is not None:
             self.state_store.start(
                 task=self.task,
@@ -523,16 +531,21 @@ You have been provided with these additional arguments, that you can access dire
                 planning_interval=self.planning_interval,
                 additional_args=additional_args,
                 messages=self.write_memory_to_messages(),
+                run_id=run_id,
+                budget=build_budget([], max_steps=max_steps, started_at=self._run_started_at).dict(),
             )
 
-        self._active_max_steps = max_steps
         if getattr(self, "checkpoint_store", None) is not None:
-            self._checkpoint_run_id = new_run_id()
-            self._checkpoint_started_at = utc_now()
+            self._checkpoint_run_id = run_id
+            self._checkpoint_started_at = self._run_started_at
             self._checkpoint_pending_step = None
             self._checkpoint_pending_tool_calls = None
             self._checkpoint_action_step = None
             self._write_checkpoint(max_steps=max_steps, step_number=0, next_step_number=1)
+
+        if getattr(self, "tool_execution_gate", None) is not None:
+            # Audit events share the checkpoint run id when checkpointing is enabled.
+            self.tool_execution_gate.bind_run(getattr(self, "_checkpoint_run_id", None) or new_run_id())
 
         if getattr(self, "python_executor", None):
             self.python_executor.send_variables(variables=self.state)
@@ -776,11 +789,24 @@ You have been provided with these additional arguments, that you can access dire
         state_store = getattr(self, "state_store", None)
         if state_store is None:
             return
+        started_at = getattr(self, "_run_started_at", None) or utc_now()
+        max_steps = getattr(self, "_active_max_steps", None) or self.max_steps
+        pending_approvals: list[dict[str, Any]] = []
+        approval_manager = getattr(self, "approval_manager", None)
+        if approval_manager is not None:
+            try:
+                pending_approvals = [
+                    record.dict() for record in approval_manager.list_records(status=ApprovalStatus.PENDING)
+                ]
+            except Exception as e:  # Finishing the state must not fail because approvals are unavailable.
+                self.logger.log(f"Could not collect pending approvals for state: {e}", level=LogLevel.ERROR)
         state_store.finish(
             status=status,
             output=output,
             error=error,
             messages=self.write_memory_to_messages(),
+            budget=build_budget(self.memory.steps, max_steps=max_steps, started_at=started_at).dict(),
+            pending_approvals=pending_approvals,
         )
 
     def _active_task_images(self) -> Any:
@@ -860,6 +886,7 @@ You have been provided with these additional arguments, that you can access dire
                 memory_system_prompt=self.memory.system_prompt.system_prompt,
                 memory_steps=[serialize_memory_step(step) for step in self.memory.steps],
                 state=serialize_state(self.state),
+                workspace_fingerprint=getattr(self, "_workspace_fingerprint", None),
                 final_output=serialize_value(output),
                 error=serialize_error(error),
                 in_flight_step=in_flight_step,
@@ -1476,7 +1503,13 @@ class ToolCallingAgent(MultiStepAgent):
             When set, a JSON snapshot is written after every step and when the run finishes or is interrupted.
             Passing `None` (default) disables persistence.
         approval_manager ([`~audit.ApprovalManager`], *optional*): Approval manager whose pending records are
-            included in checkpoints under `pending_approvals`.
+            included in checkpoints under `pending_approvals`. It also backs the gate approval flow.
+        audit_log ([`~audit.AuditLog`], *optional*): Append-only audit log receiving gate allow, deny, approval and
+            execution events for every tool call.
+        risk_policy ([`~gate.ToolRiskPolicy`], *optional*): Risk policy used by the gate; high-risk tools require
+            an approval from `approval_manager`.
+        workspace_dir (`str` or `Path`, *optional*): Workspace whose file hashes are recorded in checkpoints. When
+            set, resuming from a checkpoint written against a different workspace is refused.
         checkpoint_store ([`~checkpoint.CheckpointManager`], `str` or `Path`, *optional*): Checkpoint directory.
             When set, checkpoints are written after safe steps and before tool execution. Passing `None` (default)
             disables checkpointing.
@@ -1494,6 +1527,9 @@ class ToolCallingAgent(MultiStepAgent):
         tool_permissions: ToolPermissionPolicy | None = None,
         state_store: StateStore | str | Path | None = None,
         approval_manager: ApprovalManager | None = None,
+        audit_log: AuditLog | None = None,
+        risk_policy: ToolRiskPolicy | None = None,
+        workspace_dir: str | Path | None = None,
         checkpoint_store: CheckpointManager | str | Path | None = None,
         **kwargs,
     ):
@@ -1522,11 +1558,18 @@ class ToolCallingAgent(MultiStepAgent):
             permissions=tool_permissions,
             state=self.state,
             logger=self.logger,
+            risk_policy=risk_policy,
+            approval_manager=approval_manager,
+            audit_log=audit_log,
         )
         # Optional execution state persistence.
         self.state_store = StateStore(state_store) if isinstance(state_store, (str, Path)) else state_store
         # Optional checkpoint persistence and pending approvals.
         self.approval_manager = approval_manager
+        self.audit_log = audit_log
+        self.workspace_dir = Path(workspace_dir).expanduser().resolve() if workspace_dir is not None else None
+        self._workspace_fingerprint: dict[str, str] | None = None
+        self._run_started_at: str | None = None
         self.checkpoint_store = (
             CheckpointManager(checkpoint_store) if isinstance(checkpoint_store, (str, Path)) else checkpoint_store
         )
@@ -1770,6 +1813,9 @@ class ToolCallingAgent(MultiStepAgent):
             tool_names=set(self.tools),
             managed_agent_names=set(self.managed_agents),
         )
+        workspace_dir = getattr(self, "workspace_dir", None)
+        if workspace_dir is not None:
+            validate_workspace_unchanged(state, workspace_dir)
 
         self.task = state.task
         self.memory.system_prompt = SystemPromptStep(state.memory_system_prompt)
@@ -1782,6 +1828,8 @@ class ToolCallingAgent(MultiStepAgent):
         self._active_max_steps = max_steps or state.max_steps
         self._checkpoint_run_id = state.run_id
         self._checkpoint_started_at = state.budget.started_at
+        self._run_started_at = state.budget.started_at
+        self._workspace_fingerprint = state.workspace_fingerprint
         self._checkpoint_pending_step = None
         self._checkpoint_pending_tool_calls = None
         self._checkpoint_action_step = None
@@ -1804,6 +1852,9 @@ class ToolCallingAgent(MultiStepAgent):
                 max_steps=self._active_max_steps,
                 planning_interval=self.planning_interval,
                 messages=self.write_memory_to_messages(),
+                run_id=self._checkpoint_run_id,
+                budget=state.budget.dict(),
+                pending_approvals=state.pending_approvals,
             )
 
         next_step = self._resolve_resume_step(state, in_flight_policy)

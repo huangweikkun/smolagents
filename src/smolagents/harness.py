@@ -85,6 +85,7 @@ from .audit import (
     ApprovalResult,
     ApprovalStatus,
     AuditError,
+    AuditLog,
 )
 from .checkpoint import (
     CheckpointError,
@@ -104,7 +105,7 @@ from .completion import (
     create_default_completion_verifier,
     snapshot_files,
 )
-from .gate import ToolExecutionGate, ToolExecutionResult, ToolPermissionPolicy
+from .gate import ToolExecutionGate, ToolExecutionResult, ToolPermissionPolicy, ToolRiskPolicy
 from .memory import ToolCall
 from .models import Model
 from .sandbox import Sandbox, SandboxConfig, SandboxError, create_sandbox_tools
@@ -271,6 +272,8 @@ class HarnessConfig:
         state_path (`str` or `Path`, *optional*): Explicit execution state file.
         checkpoint_dir (`str` or `Path`, *optional*): Explicit checkpoint directory.
         approvals_path (`str` or `Path`, *optional*): Explicit approval records file.
+        audit_path (`str` or `Path`, *optional*): Explicit append-only audit log file.
+        risk_policy ([`ToolRiskPolicy`], *optional*): Risk policy applied by the gate; high-risk tools ask for approval.
         approval_applicant (`str`): Applicant recorded on approval requests.
         enable_sandbox (`bool`): Whether a [`Sandbox`] is started for the run.
         register_sandbox_tools (`bool`): Whether the sandbox file and command tools are registered per run.
@@ -290,6 +293,8 @@ class HarnessConfig:
     state_path: str | Path | None = None
     checkpoint_dir: str | Path | None = None
     approvals_path: str | Path | None = None
+    audit_path: str | Path | None = None
+    risk_policy: ToolRiskPolicy | None = None
     approval_applicant: str = "harness"
     enable_sandbox: bool = True
     register_sandbox_tools: bool = True
@@ -418,13 +423,19 @@ class Harness:
             if config.approvals_path is not None
             else runtime_dir / "approvals.json"
         )
+        audit_path = (
+            Path(config.audit_path).expanduser().resolve()
+            if config.audit_path is not None
+            else runtime_dir / "audit.jsonl"
+        )
 
         self._model_assembler = ModelAssembler(model, model_factories)
         self._tools = ToolRegistry(tools)
         self._verifier = verifier or create_default_completion_verifier()
         self._state_store = StateStore(self.state_path, workspace_dir=self._workspace)
         self._checkpoints = CheckpointManager(checkpoint_dir)
-        self._approvals = ApprovalManager(approvals_path)
+        self._audit_log = AuditLog(audit_path)
+        self._approvals = ApprovalManager(approvals_path, audit_log=self._audit_log)
         self._running = False
 
     @property
@@ -451,6 +462,11 @@ class Harness:
     def approvals(self) -> ApprovalManager:
         """Approval and audit manager used by the harness."""
         return self._approvals
+
+    @property
+    def audit_log(self) -> AuditLog:
+        """Append-only audit log written by the gate, sandbox and approvals."""
+        return self._audit_log
 
     @property
     def completion_verifier(self) -> CompletionVerifier:
@@ -498,17 +514,23 @@ class Harness:
                     agent_name=self.config.agent_name,
                     model_id=model.model_id,
                     additional_args={"task_name": self.config.task_name},
+                    run_id=run_id,
                 )
             except StateStoreError as exc:
                 raise HarnessStateError(f"Could not initialize execution state: {exc}") from exc
-            registry, sandbox = self._prepare_sandbox_tools()
+            registry, sandbox = self._prepare_sandbox_tools(run_id)
             state_variables: dict[str, Any] = {}
-            gate = registry.build_gate(
+            gate = ToolExecutionGate(
+                registry.as_dict(),
                 permissions=ToolPermissionPolicy(
                     allowed_tools=self.config.allowed_tools,
                     denied_tools=self.config.denied_tools,
                 ),
                 state=state_variables,
+                risk_policy=self.config.risk_policy,
+                approval_manager=self._approvals,
+                audit_log=self._audit_log,
+                run_id=run_id,
             )
             context = HarnessContext(
                 task=task_text,
@@ -542,6 +564,7 @@ class Harness:
                 error = CompletionVerificationError(report.summary())
 
             status = ExecutionStatus.FAILED if error is not None else ExecutionStatus.COMPLETED
+            stop_reason = "completion_failed" if isinstance(error, CompletionVerificationError) else None
             checkpoint_path = self._finalize_run(
                 task_text=task_text,
                 run_id=run_id,
@@ -552,6 +575,7 @@ class Harness:
                 state_variables=state_variables,
                 model_id=model.model_id,
                 tool_names=registry.names(),
+                stop_reason=stop_reason,
             )
             return HarnessOutcome(
                 task=task_text,
@@ -568,7 +592,7 @@ class Harness:
             if sandbox is not None:
                 sandbox.destroy()
 
-    def _prepare_sandbox_tools(self) -> tuple[ToolRegistry, Sandbox | None]:
+    def _prepare_sandbox_tools(self, run_id: str) -> tuple[ToolRegistry, Sandbox | None]:
         """Build the per-run tool registry, starting and registering sandbox tools when enabled."""
         registry = ToolRegistry(self._tools.values())
         if not self.config.enable_sandbox:
@@ -578,7 +602,11 @@ class Harness:
             use_os_isolation=self.config.use_os_isolation,
         )
         try:
-            sandbox = Sandbox.create(sandbox_config)
+            sandbox = Sandbox.create(
+                sandbox_config,
+                audit_log=self._audit_log,
+                run_id=run_id,
+            )
         except SandboxError as exc:
             raise HarnessSandboxError(f"Could not start the sandbox: {exc}") from exc
         try:
@@ -616,10 +644,11 @@ class Harness:
         state_variables: dict[str, Any],
         model_id: str | None,
         tool_names: tuple[str, ...],
+        stop_reason: str | None = None,
     ) -> Path:
         """Persist the final execution state and a checkpoint snapshot."""
         try:
-            self._state_store.finish(status=status, output=output, error=error)
+            self._state_store.finish(status=status, output=output, error=error, stop_reason=stop_reason)
             checkpoint_state = CheckpointState(
                 run_id=run_id,
                 task=task_text,

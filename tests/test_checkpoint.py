@@ -25,6 +25,7 @@ from smolagents.checkpoint import (
     CheckpointIntegrityError,
     CheckpointManager,
     CheckpointState,
+    CheckpointValidationError,
     ExecutionBudget,
     UnknownResultError,
     deserialize_error,
@@ -32,6 +33,8 @@ from smolagents.checkpoint import (
     serialize_memory_step,
     serialize_tool_call,
     utc_now,
+    validate_workspace_unchanged,
+    workspace_fingerprint,
 )
 from smolagents.memory import ActionStep, TaskStep, ToolCall
 from smolagents.models import (
@@ -391,6 +394,56 @@ def test_compatibility_mismatch_is_rejected(tmp_path):
 
     with pytest.raises(CheckpointCompatibilityError):
         agent.resume_from_checkpoint()
+
+
+def test_workspace_fingerprint_detects_changes(tmp_path):
+    (tmp_path / "a.txt").write_text("before", encoding="utf-8")
+
+    first = workspace_fingerprint(tmp_path)
+    (tmp_path / "a.txt").write_text("after", encoding="utf-8")
+    second = workspace_fingerprint(tmp_path)
+
+    assert first == {"a.txt": first["a.txt"]}
+    assert first != second
+
+
+def test_validate_workspace_unchanged_is_noop_without_fingerprint(tmp_path):
+    validate_workspace_unchanged(_make_state(), tmp_path)
+
+
+def test_resume_refuses_when_workspace_changed(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "a.txt").write_text("before", encoding="utf-8")
+    checkpoint_dir = tmp_path / "checkpoints"
+
+    def interrupt_callback(memory_step, agent):
+        agent.interrupt()
+
+    first_agent = ToolCallingAgent(
+        model=EchoToolModel(),
+        tools=[CountingEchoTool()],
+        max_steps=2,
+        step_callbacks=[interrupt_callback],
+        checkpoint_store=checkpoint_dir,
+        workspace_dir=workspace,
+    )
+    with pytest.raises(AgentError, match="Agent interrupted"):
+        first_agent.run("do the task")
+
+    state = CheckpointManager(checkpoint_dir).load()
+    assert state.workspace_fingerprint == {"a.txt": state.workspace_fingerprint["a.txt"]}
+
+    (workspace / "a.txt").write_text("after", encoding="utf-8")
+    second_agent = ToolCallingAgent(
+        model=FinalAnswerModel(),
+        tools=[CountingEchoTool()],
+        checkpoint_store=checkpoint_dir,
+        workspace_dir=workspace,
+    )
+
+    with pytest.raises(CheckpointValidationError, match="Workspace changed"):
+        second_agent.resume_from_checkpoint()
 
 
 def test_no_checkpoint_store_writes_nothing(tmp_path):

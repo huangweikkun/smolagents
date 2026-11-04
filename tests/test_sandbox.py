@@ -193,3 +193,27 @@ def test_file_read_tool_rejects_directory_reads(tmp_path):
 
     with pytest.raises(SandboxFileError):
         sandbox.read_text(".")
+
+
+def test_sandbox_denials_are_audited(tmp_path):
+    from smolagents.audit import AuditEventType, AuditLog
+
+    log = AuditLog(tmp_path / "audit.jsonl", run_id="run-1")
+    sandbox = Sandbox(
+        SandboxConfig(root_dir=tmp_path / "sandbox", use_os_isolation=False),
+        audit_log=log,
+        run_id="run-1",
+    )
+    sandbox.start()
+    try:
+        with pytest.raises(SandboxPathViolation):
+            sandbox.read_text("/etc/passwd")
+        with pytest.raises(SandboxCommandError):
+            sandbox.run_command("npm test")
+    finally:
+        sandbox.destroy()
+
+    events = log.events(run_id="run-1")
+    assert {event.rule for event in events} == {"path_escape", "command_not_allowed"}
+    assert all(event.event_type is AuditEventType.SANDBOX_DENY for event in events)
+    assert all(event.actor == "sandbox" and event.decision == "denied" for event in events)

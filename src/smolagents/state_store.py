@@ -62,12 +62,30 @@ class ExitCode(IntEnum):
     INTERRUPTED = 130
 
 
+class StopReason(str, Enum):
+    """Explicit reason why a run stopped."""
+
+    COMPLETED = "completed"
+    MAX_STEPS = "max_steps"
+    BUDGET_EXCEEDED = "budget_exceeded"
+    INTERRUPTED = "interrupted"
+    FAILED = "failed"
+    COMPLETION_FAILED = "completion_failed"
+
+
 STATUS_EXIT_CODES: dict[ExecutionStatus, int | None] = {
     ExecutionStatus.RUNNING: None,
     ExecutionStatus.COMPLETED: int(ExitCode.SUCCESS),
     ExecutionStatus.MAX_STEPS: int(ExitCode.MAX_STEPS),
     ExecutionStatus.INTERRUPTED: int(ExitCode.INTERRUPTED),
     ExecutionStatus.FAILED: int(ExitCode.FAILED),
+}
+
+STATUS_STOP_REASONS: dict[ExecutionStatus, StopReason] = {
+    ExecutionStatus.COMPLETED: StopReason.COMPLETED,
+    ExecutionStatus.MAX_STEPS: StopReason.MAX_STEPS,
+    ExecutionStatus.INTERRUPTED: StopReason.INTERRUPTED,
+    ExecutionStatus.FAILED: StopReason.FAILED,
 }
 
 
@@ -86,6 +104,15 @@ def exit_code_for(status: ExecutionStatus | str) -> int | None:
     except ValueError as e:
         raise StateStoreError(f"Unknown execution status: {status}") from e
     return STATUS_EXIT_CODES[status]
+
+
+def stop_reason_for(status: ExecutionStatus | str) -> str:
+    """Return the default stop reason associated with `status`."""
+    try:
+        status = ExecutionStatus(status)
+    except ValueError as e:
+        raise StateStoreError(f"Unknown execution status: {status}") from e
+    return STATUS_STOP_REASONS[status].value
 
 
 def _error_to_dict(error: BaseException | None) -> dict[str, str] | None:
@@ -256,10 +283,14 @@ class ExecutionState:
     workspace: WorkspaceInfo
     status: str = ExecutionStatus.RUNNING.value
     exit_code: int | None = None
+    run_id: str | None = None
+    stop_reason: str | None = None
     started_at: str = field(default_factory=_utc_now)
     finished_at: str | None = None
     error: dict[str, str] | None = None
     final_output: Any = None
+    budget: dict[str, Any] | None = None
+    pending_approvals: list[dict[str, Any]] = field(default_factory=list)
     plans: list[PlanRecord] = field(default_factory=list)
     evidence: list[StepEvidence] = field(default_factory=list)
     messages: list[dict[str, Any]] = field(default_factory=list)
@@ -271,10 +302,14 @@ class ExecutionState:
             "task": self.task.dict(),
             "status": self.status,
             "exit_code": self.exit_code,
+            "run_id": self.run_id,
+            "stop_reason": self.stop_reason,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "error": self.error,
             "final_output": self.final_output,
+            "budget": self.budget,
+            "pending_approvals": self.pending_approvals,
             "plans": [plan.dict() for plan in self.plans],
             "evidence": [item.dict() for item in self.evidence],
             "workspace": self.workspace.dict(),
@@ -289,10 +324,14 @@ class ExecutionState:
             workspace=WorkspaceInfo.from_dict(data["workspace"]),
             status=data.get("status", ExecutionStatus.RUNNING.value),
             exit_code=data.get("exit_code"),
+            run_id=data.get("run_id"),
+            stop_reason=data.get("stop_reason"),
             started_at=data.get("started_at", _utc_now()),
             finished_at=data.get("finished_at"),
             error=data.get("error"),
             final_output=data.get("final_output"),
+            budget=data.get("budget"),
+            pending_approvals=data.get("pending_approvals") or [],
             plans=[PlanRecord.from_dict(item) for item in data.get("plans", [])],
             evidence=[StepEvidence.from_dict(item) for item in data.get("evidence", [])],
             messages=data.get("messages", []),
@@ -348,6 +387,9 @@ class StateStore:
         planning_interval: int | None = None,
         additional_args: Any = None,
         messages: list[ChatMessage] | None = None,
+        run_id: str | None = None,
+        budget: dict[str, Any] | None = None,
+        pending_approvals: list[dict[str, Any]] | None = None,
     ) -> ExecutionState:
         """Initialize a running execution state and write the first snapshot."""
         self._state = ExecutionState(
@@ -361,10 +403,27 @@ class StateStore:
                 additional_args=additional_args,
             ),
             workspace=collect_workspace_info(self.workspace_dir, max_files=self.max_workspace_files),
+            run_id=run_id,
+            budget=make_json_serializable(budget) if budget is not None else None,
+            pending_approvals=[make_json_serializable(item) for item in (pending_approvals or [])],
             messages=serialize_messages(messages),
         )
         self.save()
         return self._state
+
+    def record_budget(self, budget: dict[str, Any]) -> None:
+        """Persist the current execution budget and write a snapshot."""
+        if not isinstance(budget, dict):
+            raise StateStoreError("'budget' must be a dictionary.")
+        self.state.budget = make_json_serializable(budget)
+        self.save()
+
+    def record_pending_approvals(self, records: list[dict[str, Any]]) -> None:
+        """Persist the pending approval records and write a snapshot."""
+        if not isinstance(records, list):
+            raise StateStoreError("'records' must be a list.")
+        self.state.pending_approvals = [make_json_serializable(record) for record in records]
+        self.save()
 
     def record_plan(
         self,
@@ -422,14 +481,22 @@ class StateStore:
         output: Any = None,
         error: BaseException | None = None,
         messages: list[ChatMessage] | None = None,
+        stop_reason: StopReason | str | None = None,
+        budget: dict[str, Any] | None = None,
+        pending_approvals: list[dict[str, Any]] | None = None,
     ) -> None:
-        """Mark the run as finished, set its exit code, and write a snapshot."""
+        """Mark the run as finished, set exit code and stop reason, and write a snapshot."""
         status = ExecutionStatus(status)
         self.state.status = status.value
         self.state.exit_code = exit_code_for(status)
+        self.state.stop_reason = stop_reason_for(status) if stop_reason is None else StopReason(stop_reason).value
         self.state.finished_at = _utc_now()
         self.state.final_output = make_json_serializable(output)
         self.state.error = _error_to_dict(error)
+        if budget is not None:
+            self.state.budget = make_json_serializable(budget)
+        if pending_approvals is not None:
+            self.state.pending_approvals = [make_json_serializable(record) for record in pending_approvals]
         if messages is not None:
             self.state.messages = serialize_messages(messages)
         self.save()
@@ -567,9 +634,11 @@ __all__ = [
     "StateStore",
     "StateStoreError",
     "StepEvidence",
+    "StopReason",
     "TaskInfo",
     "WorkspaceInfo",
     "collect_workspace_info",
     "exit_code_for",
     "serialize_messages",
+    "stop_reason_for",
 ]

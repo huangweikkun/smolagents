@@ -17,7 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from smolagents.audit import ApprovalStatus
+from smolagents.audit import ApprovalStatus, AuditEventType
+from smolagents.gate import ToolRiskLevel, ToolRiskPolicy
 from smolagents.harness import (
     Harness,
     HarnessConfig,
@@ -139,7 +140,10 @@ def test_harness_fails_when_completion_conditions_fail(tmp_path):
     assert outcome.exit_code == 1
     assert outcome.completion is not None and not outcome.completion.passed
     assert "deliverable_present" in outcome.error
-    assert StateStore.load(harness.state_path).status == ExecutionStatus.FAILED.value
+    state = StateStore.load(harness.state_path)
+    assert state.status == ExecutionStatus.FAILED.value
+    assert state.stop_reason == "completion_failed"
+    assert state.run_id
 
 
 def test_harness_marks_run_failed_when_executor_raises(tmp_path):
@@ -236,6 +240,43 @@ def test_harness_persists_approval_records(tmp_path):
     assert [item.record_id for item in harness.list_approvals(ApprovalStatus.APPROVED)] == [record.record_id]
     payload = json.loads((tmp_path / "runtime" / "approvals.json").read_text(encoding="utf-8"))
     assert payload["records"][0]["status"] == "approved"
+
+
+def test_harness_links_audit_events_to_checkpoint_run_id(tmp_path):
+    harness = _harness(tmp_path, _understand_repo(tmp_path), tools=(EchoTool(),))
+
+    outcome = harness.run(lambda context: context.execute_tool("echo_text", {"text": "hello"}).observation)
+
+    assert outcome.succeeded
+    events = harness.audit_log.events()
+    assert [event.event_type for event in events] == [
+        AuditEventType.GATE_ALLOW,
+        AuditEventType.EXECUTION_STARTED,
+        AuditEventType.EXECUTION_COMPLETED,
+    ]
+    checkpoint = harness.load_latest_checkpoint()
+    assert {event.run_id for event in events} == {checkpoint.run_id}
+    assert StateStore.load(harness.state_path).run_id == checkpoint.run_id
+    assert all(event.tool_name == "echo_text" for event in events)
+
+
+def test_harness_risk_policy_waits_for_approval_and_audits(tmp_path):
+    harness = _harness(
+        tmp_path,
+        _understand_repo(tmp_path),
+        tools=(EchoTool(),),
+        risk_policy=ToolRiskPolicy(tool_levels={"echo_text": ToolRiskLevel.HIGH}),
+    )
+
+    outcome = harness.run(lambda context: context.execute_tool("echo_text", {"text": "hello"}))
+
+    assert outcome.status is ExecutionStatus.FAILED
+    assert "requires approval" in outcome.error
+    assert [event.event_type for event in harness.audit_log.events()] == [
+        AuditEventType.APPROVAL_REQUESTED,
+        AuditEventType.GATE_WAITING_APPROVAL,
+    ]
+    assert len(harness.list_approvals(ApprovalStatus.PENDING)) == 1
 
 
 def test_harness_rejects_missing_workspace(tmp_path):
