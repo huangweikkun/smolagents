@@ -61,22 +61,7 @@ final       npm test exit=0（7 pass）
 completion  tests_pass ✓ / deliverable_present ✓ / deliverable_changed ✓ / existing_tests_untouched ✓
 ```
 
-## 3. 为什么只有一套 state / checkpoint
-
-`task1/` 和 `task2/` 都由 `Harness.run(executor)` 在外层装配并验收，`ToolCallingAgent` 在内层执行。两层职责分明，但执行记录不再重复：
-
-- `agent/`：唯一的执行记录。`ToolCallingAgent` 是可恢复执行主体，严格审批暂停后要靠自己的 `state.json` 与 `checkpoints/` 调 `resume_from_checkpoint()` 继续执行，因此状态和逐步 checkpoint 只由 Agent 写。
-- `harness/`：只保留跨层共享的证据。Harness 负责模型、Sandbox、工具、Gate、审批、审计与完成校验，但通过 `HarnessConfig(persist_state=False, persist_checkpoint=False)` 关闭了自身 state / checkpoint 的落盘，目录下只有 `audit.jsonl` 与 `approvals.json`。
-
-两层使用同一个 `run_id`（executor 在启动 Agent 前注入 Harness 的 run id），因此 Agent 的 checkpoint 与 `harness/audit.jsonl` 中的事件可以按 `run_id` 对齐；审批记录也只有 `harness/approvals.json` 一份。
-
-因此：
-
-- 执行记录：`agent/state.json`
-- Checkpoint：`agent/checkpoints/`
-- 审计与审批：`harness/audit.jsonl`、`harness/approvals.json`
-
-## 4. 完整运行记录（run/）
+## 3. 完整运行记录（run/）
 
 生成方式：`Harness` + `sandbox_file_write` 高风险工具，审批通过后执行，最后由完成校验器验收 `artifacts/login-flow.md`。
 
@@ -93,7 +78,7 @@ checkpoint   records/run/checkpoints/checkpoint-0001.json
 
 审计记录中的每条事件都带 `run_id`、`tool_call_id`、`rule`、`decision`、`actor`，可按 `tool_call_id=call-write-1` 还原"申请 → 等待 → 批准 → 放行 → 执行完成"的完整决策链。
 
-## 5. Checkpoint 跨进程恢复记录（resume/）
+## 4. Checkpoint 跨进程恢复记录（resume/）
 
 两个独立进程共享 `resume/state.json`、`resume/checkpoints/` 与 `resume/audit.jsonl`：
 
@@ -107,7 +92,7 @@ checkpoint   records/run/checkpoints/checkpoint-0001.json
 
 恢复时若 `workspace_dir` 指纹与 checkpoint 不一致，`validate_workspace_unchanged` 会抛出 `CheckpointValidationError`，拒绝使用旧证据和旧审批继续执行。
 
-## 6. pytest -q 结果
+## 5. pytest -q 结果
 
 `pytest.txt` 记录了本次提交相关测试套件的实际输出：
 
@@ -123,11 +108,7 @@ checkpoint   records/run/checkpoints/checkpoint-0001.json
 1087 passed, 66 skipped in 71.66s
 ```
 
-此前 MCP 集成用例因本机 8000 端口被一个 `uvicorn gateway` 服务占用而超时；停掉该服务、释放端口后全量通过。
-
-全量环境使用 `pandas==2.2.3`（项目声明的最低版本），因为 pandas 3.x 修改了布尔歧义报错的文案，会让仓库中依赖旧文案的断言失败。
-
-## 7. P0 验收覆盖
+## 6. P0 验收覆盖
 
 | 场景 | 证据 |
 | --- | --- |
@@ -150,7 +131,7 @@ checkpoint   records/run/checkpoints/checkpoint-0001.json
 | H3 预算耗尽明确停止 | `tests/test_state_store.py::test_agent_stops_with_budget_exceeded_stop_reason`、`tests/test_harness_loop.py::test_harness_budget_exceeded_sets_stop_reason` |
 | T1 测试可重复通过 | `pytest.txt` |
 
-## 8. 复现命令
+## 7. 复现命令
 
 任务一、二的执行脚本已放在本目录（`run_task1.py` / `run_task2.py`），Harness 记录生成脚本为临时文件（`/tmp/generate_harness_records.py`）。核心执行方式如下：
 
