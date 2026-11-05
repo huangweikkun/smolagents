@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "checksum": "71e6c5012b6b93700cc274561d4daf402c7e40e5812f60d9cc18790d110530d7",
+  "checkpoint": {
+    "schema_version": 1,
+    "checkpoint_id": "d9eccc0216904ccb88fe161e88381fda",
+    "sequence": 8,
+    "created_at": "2026-11-04T16:15:48.061773+00:00",
+    "updated_at": "2026-11-04T16:15:48.061773+00:00",
+    "run_id": "e15992e78c77484ca3df4770026f0a9d",
+    "task": "checkpoint resume demo",
+    "task_images": null,
+    "agent_class": "ToolCallingAgent",
+    "agent_name": null,
+    "model_id": null,
+    "tool_names": [
+      "echo",
+      "final_answer"
+    ],
+    "managed_agent_names": [],
+    "max_steps": 2,
+    "planning_interval": null,
+    "step_number": 2,
+    "next_step_number": 3,
+    "status": "running",
+    "exit_code": null,
+    "budget": {
+      "max_steps": 2,
+      "steps_used": 2,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "started_at": "2026-11-04T16:15:47.530166+00:00"
+    },
+    "plans": [],
+    "evidence": [
+      {
+        "step_number": 1,
+        "result_status": "completed",
+        "tool_calls": [
+          {
+            "id": "call_echo",
+            "name": "echo",
+            "arguments": {
+              "text": "hi"
+            }
+          }
+        ],
+        "observations": "hi",
+        "action_output": null,
+        "error": null,
+        "is_final_answer": false,
+        "timing": {
+          "start_time": 1793808947.562505,
+          "end_time": 1793808947.565374
+        },
+        "token_usage": null
+      },
+      {
+        "step_number": 2,
+        "result_status": "completed",
+        "tool_calls": [
+          {
+            "id": "call_final",
+            "name": "final_answer",
+            "arguments": {
+              "answer": "done"
+            }
+          }
+        ],
+        "observations": "done",
+        "action_output": null,
+        "error": null,
+        "is_final_answer": true,
+        "timing": {
+          "start_time": 1793808948.057606,
+          "end_time": 1793808948.0609999
+        },
+        "token_usage": null
+      }
+    ],
+    "pending_approvals": [],
+    "memory_system_prompt": "You are an expert assistant who can solve any task using tool calls. You will be given a task to solve as best you can.\nTo do so, you have been given access to some tools.\n\nThe tool call you write is an action: after the tool is executed, you will get the result of the tool call as an \"observation\".\nThis Action/Observation can repeat N times, you should take several steps when needed.\n\nYou can use the result of the previous action as input for the next action.\nThe observation will always be a string: it can represent a file, like \"image_1.jpg\".\nThen you can use it as input for the next action. You can do it for instance as follows:\n\nObservation: \"image_1.jpg\"\n\nAction:\n{\n  \"name\": \"image_transformer\",\n  \"arguments\": {\"image\": \"image_1.jpg\"}\n}\n\nTo provide the final answer to the task, use an action blob with \"name\": \"final_answer\" tool. It is the only way to complete the task, else you will be stuck on a loop. So your final output should look like this:\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": {\"answer\": \"insert your final answer here\"}\n}\n\n\nHere are a few examples using notional tools:\n---\nTask: \"Generate an image of the oldest person in this document.\"\n\nAction:\n{\n  \"name\": \"document_qa\",\n  \"arguments\": {\"document\": \"document.pdf\", \"question\": \"Who is the oldest person mentioned?\"}\n}\nObservation: \"The oldest person in the document is John Doe, a 55 year old lumberjack living in Newfoundland.\"\n\nAction:\n{\n  \"name\": \"image_generator\",\n  \"arguments\": {\"prompt\": \"A portrait of John Doe, a 55-year-old man living in Canada.\"}\n}\nObservation: \"image.png\"\n\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": \"image.png\"\n}\n\n---\nTask: \"What is the result of the following operation: 5 + 3 + 1294.678?\"\n\nAction:\n{\n    \"name\": \"python_interpreter\",\n    \"arguments\": {\"code\": \"5 + 3 + 1294.678\"}\n}\nObservation: 1302.678\n\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": \"1302.678\"\n}\n\n---\nTask: \"Which city has the highest population , Guangzhou or Shanghai?\"\n\nAction:\n{\n    \"name\": \"web_search\",\n    \"arguments\": \"Population Guangzhou\"\n}\nObservation: ['Guangzhou has a population of 15 million inhabitants as of 2021.']\n\n\nAction:\n{\n    \"name\": \"web_search\",\n    \"arguments\": \"Population Shanghai\"\n}\nObservation: '26 million (2019)'\n\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": \"Shanghai\"\n}\n\nAbove example were using notional tools that might not exist for you. You only have access to these tools:\n- echo: Echo the input text.\n    Takes inputs: {'text': {'type': 'string', 'description': 'Text to echo.'}}\n    Returns an output of type: string\n- final_answer: Provides a final answer to the given problem.\n    Takes inputs: {'answer': {'type': 'any', 'description': 'The final answer to the problem'}}\n    Returns an output of type: any\n\nHere are the rules you should always follow to solve your task:\n1. ALWAYS provide a tool call, else you will fail.\n2. Always use the right arguments for the tools. Never use variable names as the action arguments, use the value instead.\n3. Call a tool only when needed: do not call the search agent if you do not need information, try to solve the task yourself. If no tool call is needed, use final_answer tool to return your answer.\n4. Never re-do a tool call that you previously did with the exact same parameters.\n\nNow Begin!",
+    "memory_steps": [
+      {
+        "step_type": "task",
+        "task": "checkpoint resume demo",
+        "task_images": null
+      },
+      {
+        "step_type": "action",
+        "step_number": 1,
+        "timing": {
+          "start_time": 1793808947.562505,
+          "end_time": 1793808947.565374
+        },
+        "model_input_messages": [
+          {
+            "role": "system",
+            "content": [
+              {
+                "type": "text",
+                "text": "You are an expert assistant who can solve any task using tool calls. You will be given a task to solve as best you can.\nTo do so, you have been given access to some tools.\n\nThe tool call you write is an action: after the tool is executed, you will get the result of the tool call as an \"observation\".\nThis Action/Observation can repeat N times, you should take several steps when needed.\n\nYou can use the result of the previous action as input for the next action.\nThe observation will always be a string: it can represent a file, like \"image_1.jpg\".\nThen you can use it as input for the next action. You can do it for instance as follows:\n\nObservation: \"image_1.jpg\"\n\nAction:\n{\n  \"name\": \"image_transformer\",\n  \"arguments\": {\"image\": \"image_1.jpg\"}\n}\n\nTo provide the final answer to the task, use an action blob with \"name\": \"final_answer\" tool. It is the only way to complete the task, else you will be stuck on a loop. So your final output should look like this:\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": {\"answer\": \"insert your final answer here\"}\n}\n\n\nHere are a few examples using notional tools:\n---\nTask: \"Generate an image of the oldest person in this document.\"\n\nAction:\n{\n  \"name\": \"document_qa\",\n  \"arguments\": {\"document\": \"document.pdf\", \"question\": \"Who is the oldest person mentioned?\"}\n}\nObservation: \"The oldest person in the document is John Doe, a 55 year old lumberjack living in Newfoundland.\"\n\nAction:\n{\n  \"name\": \"image_generator\",\n  \"arguments\": {\"prompt\": \"A portrait of John Doe, a 55-year-old man living in Canada.\"}\n}\nObservation: \"image.png\"\n\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": \"image.png\"\n}\n\n---\nTask: \"What is the result of the following operation: 5 + 3 + 1294.678?\"\n\nAction:\n{\n    \"name\": \"python_interpreter\",\n    \"arguments\": {\"code\": \"5 + 3 + 1294.678\"}\n}\nObservation: 1302.678\n\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": \"1302.678\"\n}\n\n---\nTask: \"Which city has the highest population , Guangzhou or Shanghai?\"\n\nAction:\n{\n    \"name\": \"web_search\",\n    \"arguments\": \"Population Guangzhou\"\n}\nObservation: ['Guangzhou has a population of 15 million inhabitants as of 2021.']\n\n\nAction:\n{\n    \"name\": \"web_search\",\n    \"arguments\": \"Population Shanghai\"\n}\nObservation: '26 million (2019)'\n\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": \"Shanghai\"\n}\n\nAbove example were using notional tools that might not exist for you. You only have access to these tools:\n- echo: Echo the input text.\n    Takes inputs: {'text': {'type': 'string', 'description': 'Text to echo.'}}\n    Returns an output of type: string\n- final_answer: Provides a final answer to the given problem.\n    Takes inputs: {'answer': {'type': 'any', 'description': 'The final answer to the problem'}}\n    Returns an output of type: any\n\nHere are the rules you should always follow to solve your task:\n1. ALWAYS provide a tool call, else you will fail.\n2. Always use the right arguments for the tools. Never use variable names as the action arguments, use the value instead.\n3. Call a tool only when needed: do not call the search agent if you do not need information, try to solve the task yourself. If no tool call is needed, use final_answer tool to return your answer.\n4. Never re-do a tool call that you previously did with the exact same parameters.\n\nNow Begin!"
+              }
+            ],
+            "tool_calls": null,
+            "token_usage": null
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "New task:\ncheckpoint resume demo"
+              }
+            ],
+            "tool_calls": null,
+            "token_usage": null
+          }
+        ],
+        "tool_calls": [
+          {
+            "id": "call_echo",
+            "name": "echo",
+            "arguments": {
+              "text": "hi"
+            }
+          }
+        ],
+        "error": null,
+        "model_output_message": {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "id": "call_echo",
+              "type": "function",
+              "function": {
+                "name": "echo",
+                "arguments": {
+                  "text": "hi"
+                },
+                "description": null
+              }
+            }
+          ],
+          "token_usage": null
+        },
+        "model_output": "",
+        "code_action": null,
+        "observations": "hi",
+        "observations_images": null,
+        "action_output": null,
+        "token_usage": null,
+        "is_final_answer": false
+      },
+      {
+        "step_type": "action",
+        "step_number": 2,
+        "timing": {
+          "start_time": 1793808948.057606,
+          "end_time": 1793808948.0609999
+        },
+        "model_input_messages": [
+          {
+            "role": "system",
+            "content": [
+              {
+                "type": "text",
+                "text": "You are an expert assistant who can solve any task using tool calls. You will be given a task to solve as best you can.\nTo do so, you have been given access to some tools.\n\nThe tool call you write is an action: after the tool is executed, you will get the result of the tool call as an \"observation\".\nThis Action/Observation can repeat N times, you should take several steps when needed.\n\nYou can use the result of the previous action as input for the next action.\nThe observation will always be a string: it can represent a file, like \"image_1.jpg\".\nThen you can use it as input for the next action. You can do it for instance as follows:\n\nObservation: \"image_1.jpg\"\n\nAction:\n{\n  \"name\": \"image_transformer\",\n  \"arguments\": {\"image\": \"image_1.jpg\"}\n}\n\nTo provide the final answer to the task, use an action blob with \"name\": \"final_answer\" tool. It is the only way to complete the task, else you will be stuck on a loop. So your final output should look like this:\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": {\"answer\": \"insert your final answer here\"}\n}\n\n\nHere are a few examples using notional tools:\n---\nTask: \"Generate an image of the oldest person in this document.\"\n\nAction:\n{\n  \"name\": \"document_qa\",\n  \"arguments\": {\"document\": \"document.pdf\", \"question\": \"Who is the oldest person mentioned?\"}\n}\nObservation: \"The oldest person in the document is John Doe, a 55 year old lumberjack living in Newfoundland.\"\n\nAction:\n{\n  \"name\": \"image_generator\",\n  \"arguments\": {\"prompt\": \"A portrait of John Doe, a 55-year-old man living in Canada.\"}\n}\nObservation: \"image.png\"\n\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": \"image.png\"\n}\n\n---\nTask: \"What is the result of the following operation: 5 + 3 + 1294.678?\"\n\nAction:\n{\n    \"name\": \"python_interpreter\",\n    \"arguments\": {\"code\": \"5 + 3 + 1294.678\"}\n}\nObservation: 1302.678\n\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": \"1302.678\"\n}\n\n---\nTask: \"Which city has the highest population , Guangzhou or Shanghai?\"\n\nAction:\n{\n    \"name\": \"web_search\",\n    \"arguments\": \"Population Guangzhou\"\n}\nObservation: ['Guangzhou has a population of 15 million inhabitants as of 2021.']\n\n\nAction:\n{\n    \"name\": \"web_search\",\n    \"arguments\": \"Population Shanghai\"\n}\nObservation: '26 million (2019)'\n\nAction:\n{\n  \"name\": \"final_answer\",\n  \"arguments\": \"Shanghai\"\n}\n\nAbove example were using notional tools that might not exist for you. You only have access to these tools:\n- echo: Echo the input text.\n    Takes inputs: {'text': {'type': 'string', 'description': 'Text to echo.'}}\n    Returns an output of type: string\n- final_answer: Provides a final answer to the given problem.\n    Takes inputs: {'answer': {'type': 'any', 'description': 'The final answer to the problem'}}\n    Returns an output of type: any\n\nHere are the rules you should always follow to solve your task:\n1. ALWAYS provide a tool call, else you will fail.\n2. Always use the right arguments for the tools. Never use variable names as the action arguments, use the value instead.\n3. Call a tool only when needed: do not call the search agent if you do not need information, try to solve the task yourself. If no tool call is needed, use final_answer tool to return your answer.\n4. Never re-do a tool call that you previously did with the exact same parameters.\n\nNow Begin!"
+              }
+            ],
+            "tool_calls": null,
+            "token_usage": null
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "New task:\ncheckpoint resume demo"
+              }
+            ],
+            "tool_calls": null,
+            "token_usage": null
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": ""
+              }
+            ],
+            "tool_calls": null,
+            "token_usage": null
+          },
+          {
+            "role": "tool-call",
+            "content": [
+              {
+                "type": "text",
+                "text": "Calling tools:\n[{'id': 'call_echo', 'type': 'function', 'function': {'name': 'echo', 'arguments': {'text': 'hi'}}}]"
+              }
+            ],
+            "tool_calls": null,
+            "token_usage": null
+          },
+          {
+            "role": "tool-response",
+            "content": [
+              {
+                "type": "text",
+                "text": "Observation:\nhi"
+              }
+            ],
+            "tool_calls": null,
+            "token_usage": null
+          }
+        ],
+        "tool_calls": [
+          {
+            "id": "call_final",
+            "name": "final_answer",
+            "arguments": {
+              "answer": "done"
+            }
+          }
+        ],
+        "error": null,
+        "model_output_message": {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "id": "call_final",
+              "type": "function",
+              "function": {
+                "name": "final_answer",
+                "arguments": {
+                  "answer": "done"
+                },
+                "description": null
+              }
+            }
+          ],
+          "token_usage": null
+        },
+        "model_output": "",
+        "code_action": null,
+        "observations": "done",
+        "observations_images": null,
+        "action_output": null,
+        "token_usage": null,
+        "is_final_answer": true
+      }
+    ],
+    "state": {},
+    "workspace_fingerprint": {
+      "note.txt": "81dc5b66a3acc2b1ce2cac4873b7636b9a40cc4bbc5861179d8460e3d3f35948"
+    },
+    "final_output": null,
+    "error": null,
+    "in_flight_step": null
+  }
+}

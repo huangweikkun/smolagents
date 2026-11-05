@@ -286,6 +286,9 @@ class HarnessConfig:
         sandbox_tool_factory (`Callable[[Sandbox], Iterable[BaseTool]]`, *optional*): Builds the per-run toolset from
             the started sandbox, e.g. workspace coding tools. Takes precedence over `register_sandbox_tools`.
         verify_completion (`bool`): Whether the business task is verified after the executor returns.
+        persist_state (`bool`): Whether Harness writes its own StateStore snapshot. Disable when the executor
+            already owns a richer execution record, to avoid duplicate state files.
+        persist_checkpoint (`bool`): Whether Harness writes a final checkpoint snapshot. Disable for the same reason.
         max_tool_calls (`int`, *optional*): Maximum tool calls allowed per run; exceeding it stops with
             status `budget_exceeded`.
         allowed_tools (`frozenset[str]`, *optional*): Gate allowlist; `None` allows every non-denied tool.
@@ -310,6 +313,8 @@ class HarnessConfig:
     sandbox_config: SandboxConfig | None = None
     sandbox_tool_factory: Callable[[Sandbox], Iterable[BaseTool]] | None = None
     verify_completion: bool = True
+    persist_state: bool = True
+    persist_checkpoint: bool = True
     max_tool_calls: int | None = None
     allowed_tools: frozenset[str] | None = None
     denied_tools: frozenset[str] = frozenset()
@@ -388,6 +393,7 @@ class HarnessOutcome:
     error: str | None
     state_path: Path
     checkpoint_path: Path | None
+    stop_reason: str | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -531,18 +537,19 @@ class Harness:
         baseline = snapshot_files(self._workspace) if self.config.verify_completion else None
         try:
             model = self._model_assembler.assemble()
-            try:
-                self._state_store.start(
-                    task=task_text,
-                    agent_class=self.config.agent_class,
-                    max_steps=self.config.max_steps,
-                    agent_name=self.config.agent_name,
-                    model_id=model.model_id,
-                    additional_args={"task_name": self.config.task_name},
-                    run_id=run_id,
-                )
-            except StateStoreError as exc:
-                raise HarnessStateError(f"Could not initialize execution state: {exc}") from exc
+            if self.config.persist_state:
+                try:
+                    self._state_store.start(
+                        task=task_text,
+                        agent_class=self.config.agent_class,
+                        max_steps=self.config.max_steps,
+                        agent_name=self.config.agent_name,
+                        model_id=model.model_id,
+                        additional_args={"task_name": self.config.task_name},
+                        run_id=run_id,
+                    )
+                except StateStoreError as exc:
+                    raise HarnessStateError(f"Could not initialize execution state: {exc}") from exc
             registry, sandbox = self._prepare_sandbox_tools(run_id)
             state_variables: dict[str, Any] = {}
             gate = ToolExecutionGate(
@@ -591,7 +598,7 @@ class Harness:
                 error = CompletionVerificationError(report.summary())
 
             status = ExecutionStatus.FAILED if error is not None else ExecutionStatus.COMPLETED
-            stop_reason: str | None = None
+            stop_reason: str | None = "completed" if error is None else "failed"
             if isinstance(error, HarnessBudgetExceededError):
                 status = ExecutionStatus.BUDGET_EXCEEDED
                 stop_reason = "budget_exceeded"
@@ -618,6 +625,7 @@ class Harness:
                 error=str(error) if error is not None else None,
                 state_path=self.state_path,
                 checkpoint_path=checkpoint_path,
+                stop_reason=stop_reason,
             )
         finally:
             self._running = False
@@ -680,10 +688,13 @@ class Harness:
         model_id: str | None,
         tool_names: tuple[str, ...],
         stop_reason: str | None = None,
-    ) -> Path:
-        """Persist the final execution state and a checkpoint snapshot."""
+    ) -> Path | None:
+        """Persist the final execution state and checkpoint when those layers are enabled."""
         try:
-            self._state_store.finish(status=status, output=output, error=error, stop_reason=stop_reason)
+            if self.config.persist_state:
+                self._state_store.finish(status=status, output=output, error=error, stop_reason=stop_reason)
+            if not self.config.persist_checkpoint:
+                return None
             checkpoint_state = CheckpointState(
                 run_id=run_id,
                 task=task_text,

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "records": [
+    {
+      "record_id": "be84d6b3d30347f3b7975f4f784b06e4",
+      "subject": "tool",
+      "operation_type": "sandbox_file_write",
+      "content": {
+        "path": "note.md",
+        "content": "guarded run record"
+      },
+      "requested_at": "2026-11-04T13:48:03.529275+00:00",
+      "applicant": "gate",
+      "updated_at": "2026-11-04T13:48:03.530083+00:00",
+      "status": "approved",
+      "approver": "maintainer",
+      "comment": "approved for record",
+      "reason": null,
+      "decided_at": "2026-11-04T13:48:03.530083+00:00",
+      "metadata": {
+        "tool_call_id": "call-write-1",
+        "run_id": "cea0da32733e411e9d991dffc7f7c46e",
+        "risk": "high"
+      }
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "checksum": "68e31405ac4fd812c69bd236a561bc1b21d8d249f91304d30a78d48b3e4a9608",
+  "checkpoint": {
+    "schema_version": 1,
+    "checkpoint_id": "3ed1fe61d86a44cda3b17058bdb2db02",
+    "sequence": 1,
+    "created_at": "2026-11-04T13:48:03.534946+00:00",
+    "updated_at": "2026-11-04T13:48:03.534946+00:00",
+    "run_id": "cea0da32733e411e9d991dffc7f7c46e",
+    "task": "understand",
+    "task_images": null,
+    "agent_class": "Harness",
+    "agent_name": "harness",
+    "model_id": "record-dummy",
+    "tool_names": [
+      "sandbox_command",
+      "sandbox_file_read",
+      "sandbox_file_write"
+    ],
+    "managed_agent_names": [],
+    "max_steps": 10,
+    "planning_interval": null,
+    "step_number": 0,
+    "next_step_number": 1,
+    "status": "completed",
+    "exit_code": 0,
+    "budget": {
+      "max_steps": 10,
+      "steps_used": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "started_at": "2026-11-04T13:48:03.495130+00:00"
+    },
+    "plans": [],
+    "evidence": [],
+    "pending_approvals": [],
+    "memory_system_prompt": "",
+    "memory_steps": [],
+    "state": {},
+    "workspace_fingerprint": null,
+    "final_output": "run-record-complete",
+    "error": null,
+    "in_flight_step": null
+  }
+}

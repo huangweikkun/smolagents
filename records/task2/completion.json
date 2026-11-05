@@ -1,0 +1,30 @@
+{
+  "task": "fix_tests",
+  "passed": true,
+  "checks": [
+    {
+      "name": "tests_pass",
+      "passed": true,
+      "skipped": false,
+      "detail": "`npm test --` exited with code 0"
+    },
+    {
+      "name": "deliverable_present",
+      "passed": true,
+      "skipped": false,
+      "detail": "src/auth/session-policy.ts exists and is non-empty"
+    },
+    {
+      "name": "deliverable_changed",
+      "passed": true,
+      "skipped": false,
+      "detail": "src/auth/session-policy.ts was modified"
+    },
+    {
+      "name": "existing_tests_untouched",
+      "passed": true,
+      "skipped": false,
+      "detail": "nothing under tests/ outside tests/generated/ changed"
+    }
+  ]
+}

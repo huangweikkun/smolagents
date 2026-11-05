@@ -1,0 +1,655 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.13, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/jacken/time-geek/smolagents
+configfile: pyproject.toml
+plugins: datadir-1.9.0, platformdirs-4.14.4, timeout-2.4.0, arize-phoenix-client-3.6.0, anyio-4.16.0
+collected 1153 items
+
+tests/test_agents.py ...╭────────────────────────────────── New run ───────────────────────────────────╮
+│                                                                              │
+│ What is 2 multiplied by 3.6452?                                              │
+│                                                                              │
+╰─ FakeCodeModel - None ───────────────────────────────────────────────────────╯
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Output message of the LLM: ─────────────────────────────────────────────────────
+                                                                                
+Thought: I should multiply 2 by 3.6452. special_marker                          
+<code>                                                                          
+result = 2**3.6452                                                              
+</code>                                                                         
+                                                                                
+ ─ Executing parsed code: ───────────────────────────────────────────────────── 
+  result = 2**3.6452                                                            
+ ────────────────────────────────────────────────────────────────────────────── 
+Out: 12.511648652635412
+[Step 1: Duration 0.01 seconds]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 2 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Output message of the LLM: ─────────────────────────────────────────────────────
+                                                                                
+Thought: I can now answer the initial question                                  
+<code>                                                                          
+final_answer(7.2904)                                                            
+</code>                                                                         
+                                                                                
+ ─ Executing parsed code: ───────────────────────────────────────────────────── 
+  final_answer(7.2904)                                                          
+ ────────────────────────────────────────────────────────────────────────────── 
+Final answer: 7.2904
+[Step 2: Duration 0.00 seconds]
+.............W1105 00:51:50.724000 90747 .venv/lib/python3.13/site-packages/torch/distributed/elastic/multiprocessing/redirects.py:35] NOTE: Redirects are currently not supported in MacOs.
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights: 100%|██████████| 290/290 [00:00<00:00, 70321.34it/s]
+.╭────────────────────────────────── New run ───────────────────────────────────╮
+│                                                                              │
+│ Dummy task.                                                                  │
+│                                                                              │
+╰─ FakeCodeModel - None ───────────────────────────────────────────────────────╯
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Output message of the LLM: ─────────────────────────────────────────────────────
+                                                                                
+Thought: I should multiply 2 by 3.6452. special_marker                          
+<code>                                                                          
+result = 2**3.6452                                                              
+</code>                                                                         
+                                                                                
+ ─ Executing parsed code: ───────────────────────────────────────────────────── 
+  result = 2**3.6452                                                            
+ ────────────────────────────────────────────────────────────────────────────── 
+Out: 12.511648652635412
+[Step 1: Duration 0.00 seconds]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 2 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Output message of the LLM: ─────────────────────────────────────────────────────
+                                                                                
+Thought: I can now answer the initial question                                  
+<code>                                                                          
+final_answer(7.2904)                                                            
+</code>                                                                         
+                                                                                
+ ─ Executing parsed code: ───────────────────────────────────────────────────── 
+  final_answer(7.2904)                                                          
+ ────────────────────────────────────────────────────────────────────────────── 
+Final answer: 7.2904
+[Step 2: Duration 0.00 seconds]
+...........................................{"tool": "test_tool", "arguments": "{"input": "output1"}"} {"tool": "test_tool",
+"arguments": "{"input": "output2"}"}                                            ...s...........╭────────────────────────────────── New run ───────────────────────────────────╮
+│                                                                              │
+│ Make me an image from the latest trend on google trends.                     │
+│                                                                              │
+╰─ FakeCodeModelImageGeneration - None ────────────────────────────────────────╯
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ─ Executing parsed code: ───────────────────────────────────────────────────── 
+  image = image_generation_tool()                                               
+ ────────────────────────────────────────────────────────────────────────────── 
+Out: <PIL.Image.Image image mode=RGB size=100x100 at 0x17E8A0B90>
+[Step 1: Duration 0.00 seconds]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 2 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ─ Executing parsed code: ───────────────────────────────────────────────────── 
+  final_answer(image)                                                           
+ ────────────────────────────────────────────────────────────────────────────── 
+Final answer: <PIL.Image.Image image mode=RGB size=100x100 at 0x17E8A0B90>
+[Step 2: Duration 0.00 seconds]
+.......s........╭─────────────────────────── New run - search_agent ───────────────────────────╮
+│                                                                              │
+│ You're a helpful agent named 'search_agent'.                                 │
+│ You have been submitted this task by your manager.                           │
+│ ---                                                                          │
+│ Task:                                                                        │
+│ Who is the current US president?                                             │
+│ ---                                                                          │
+│ You're helping your manager solve a wider task: so make sure to not provide  │
+│ a one-line answer, but give as much information as possible to give them a   │
+│ clear understanding of the answer.                                           │
+│                                                                              │
+│ Your final_answer WILL HAVE to contain these parts:                          │
+│ ### 1. Task outcome (short version):                                         │
+│ ### 2. Task outcome (extremely detailed version):                            │
+│ ### 3. Additional context (if relevant):                                     │
+│                                                                              │
+│ Put all these in your final_answer tool, everything that you do not pass as  │
+│ an argument to final_answer will be lost.                                    │
+│ And even if your task resolution is not successful, please return as much    │
+│ context as possible, so that your manager can act upon this feedback.        │
+│                                                                              │
+╰─ FakeModelMultiagentsManagedAgent - None ────────────────────────────────────╯
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Output message of the LLM: ─────────────────────────────────────────────────────
+Here is the secret content: FLAG1                                               
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Calling tool: 'final_answer' with arguments: Report on the current US        │
+│ president                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Observations: Report on the current US president
+Final answer: Report on the current US president
+[Step 1: Duration 0.00 seconds]
+......
+tests/test_all_docs.py ssssssssssssssssssssss
+tests/test_audit.py ........................
+tests/test_cli.py .......
+tests/test_coding_tools.py ...
+tests/test_completion.py .....................
+tests/test_default_tools.py s......................
+tests/test_final_answer.py .....
+tests/test_function_type_hints_utils.py .........................
+tests/test_gate.py ................
+tests/test_gradio_ui.py .............................
+tests/test_harness_loop.py ..................
+tests/test_import.py Using CPython 3.13.13 interpreter at: /Users/jacken/.local/share/mise/installs/python/3.13/bin/python3
+Creating virtual environment at: /var/folders/hk/87x_3c_11lng7p6fldcyzcp80000gn/T/tmptlp3g8nd/venv
+Activate with: source /var/folders/hk/87x_3c_11lng7p6fldcyzcp80000gn/T/tmptlp3g8nd/venv/bin/activate
+Using Python 3.13.13 environment at: /var/folders/hk/87x_3c_11lng7p6fldcyzcp80000gn/T/tmptlp3g8nd/venv
+INFO add_decision: Id::<PubGrubPackage>(0) @ 0a0.dev0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(1) @ 1.27.0.dev0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(2) @ 2.4.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(3) @ 2.34.2 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(4) @ 15.0.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(5) @ 3.1.6 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(6) @ 13.0.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(7) @ 1.2.4 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(10) @ 8.5.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(11) @ 4.2.8 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(12) @ 2026.9.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(8) @ 1.8.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(9) @ 1.8.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(25) @ 1.8.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(13) @ 2.16.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(28) @ 2.16.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(29) @ 2.16.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(32) @ 2.16.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(14) @ 26.3 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(15) @ 6.0.3 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(16) @ 4.70.1 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(17) @ 4.16.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(18) @ 3.5.2 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(19) @ 3.20 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(20) @ 2.8.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(21) @ 2026.10.23 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(22) @ 4.2.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(23) @ 2.21.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(24) @ 3.0.4 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(26) @ 4.16.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(27) @ 4.16.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(35) @ 4.16.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(36) @ 4.16.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(37) @ 4.16.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(30) @ 0.10.5 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(31) @ 0.10.5 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(38) @ 0.10.5 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(33) @ 0.16.0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(34) @ 0.1.2 without checking dependencies    
+Resolved 28 packages in 3ms
+   Building smolagents @ file:///Users/jacken/time-geek/smolagents
+INFO add_decision: Id::<PubGrubPackage>(0) @ 0a0.dev0 without checking dependencies    
+INFO add_decision: Id::<PubGrubPackage>(1) @ 84.2.1 without checking dependencies    
+      Built smolagents @ file:///Users/jacken/time-geek/smolagents
+Prepared 1 package in 495ms
+Installed 28 packages in 24ms
+ + anyio==4.16.0
+ + certifi==2026.10.23
+ + charset-normalizer==3.5.2
+ + click==8.5.0
+ + filelock==4.2.8
+ + fsspec==2026.9.0
+ + h11==0.16.0
+ + hf-xet==1.8.0
+ + httpcore2==2.16.0
+ + httpx2==2.16.0
+ + huggingface-hub==2.4.0
+ + idna==3.20
+ + jinja2==3.1.6
+ + markdown-it-py==4.2.0
+ + markupsafe==3.0.4
+ + mdurl==0.1.2
+ + packaging==26.3
+ + pillow==13.0.0
+ + pygments==2.21.0
+ + python-dotenv==1.2.4
+ + pyyaml==6.0.3
+ + requests==2.34.2
+ + rich==15.0.0
+ + smolagents==1.27.0.dev0 (from file:///Users/jacken/time-geek/smolagents)
+ + tqdm==4.70.1
+ + truststore==0.10.5
+ + typing-extensions==4.16.0
+ + urllib3==2.8.0
+.
+tests/test_local_python_executor.py ..........................................................................................................................................................................................................................................................................................................................................................s...s................................................
+tests/test_mcp_client.py [11/05/26 00:52:33] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+.[11/05/26 00:52:33] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+.[11/05/26 00:52:33] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+.[11/05/26 00:52:34] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+.[11/05/26 00:52:34] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+[11/05/26 00:52:34] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+.
+tests/test_memory.py ............
+tests/test_models.py ......................Fetching 12 files:   0%|          | 0/12 [00:00<?, ?it/s]Fetching 12 files: 100%|██████████| 12/12 [00:00<00:00, 3174.70it/s]
+.Fetching 12 files:   0%|          | 0/12 [00:00<?, ?it/s]Fetching 12 files: 100%|██████████| 12/12 [00:00<00:00, 2389.80it/s]
+.Loading weights:   0%|          | 0/272 [00:00<?, ?it/s]Loading weights: 100%|██████████| 272/272 [00:00<00:00, 21348.65it/s]
+.Loading weights:   0%|          | 0/715 [00:00<?, ?it/s]Loading weights: 100%|██████████| 715/715 [00:00<00:00, 24648.25it/s]
+[transformers] Image decoding with `torchvision` is deprecated and will be removed in future versions .Please install `torchcodec>=0.16.0` instead. 
+.....ssss
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm.turn_on_debug()'.
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm.turn_on_debug()'.
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+.
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm.turn_on_debug()'.
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm.turn_on_debug()'.
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+.
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm.turn_on_debug()'.
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm.turn_on_debug()'.
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+........s...........................................................................
+tests/test_monitoring.py ..╭────────────────────────────────── New run ───────────────────────────────────╮
+│                                                                              │
+│ Test task                                                                    │
+│ You have been provided with these additional arguments, that you can access  │
+│ directly using the keys as variables:                                        │
+│ {'image': <PIL.Image.Image image mode=RGB size=100x100 at 0x1552C5470>}.     │
+│                                                                              │
+╰─ FakeLLMModelImage - None ───────────────────────────────────────────────────╯
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Output message of the LLM: ─────────────────────────────────────────────────────
+I will call the final_answer tool.                                              
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Calling tool: 'final_answer' with arguments: {'answer': 'image'}             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Observations: Stored 'image.png' in memory.
+Final answer: 
+/var/folders/hk/87x_3c_11lng7p6fldcyzcp80000gn/T/tmpfd71p12z/62f2fff4-ca17-4472-
+8925-8f4cf59b0c85.png
+[Step 1: Duration 0.00 seconds]
+.....[00:52:51] Replaying the agent's steps:                            memory.py:256
+System prompt ──────────────────────────────────────────────────────────────────
+test                                                                            
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Step 1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{                                                                               
+    "role": "user",                                                             
+    "content": "Hello",                                                         
+    "tool_calls": null,                                                         
+    "raw": null,                                                                
+    "token_usage": null                                                         
+}                                                                               
+.╭─────────────────────────────────────────────────── New run - Run ────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│ {'k': ['v', 1]}                                                                                                      │
+│                                                                                                                      │
+╰─ {'also': 'dict'} ───────────────────────────────────────────────────────────────────────────────────────────────────╯
+.╭────────────────────────────────────────────────────── New run ───────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│ hello [/bad]\x00\x1b world [bold]bold[/bold]                                                                         │
+│                                                                                                                      │
+╰─ sub[/bad]title ─────────────────────────────────────────────────────────────────────────────────────────────────────╯
+.
+tests/test_remote_executors.py .....s..sssss.ssssssssssssssssssssss.....
+tests/test_sandbox.py ...............
+tests/test_search.py ..ss
+tests/test_serialization.py .........................................................
+tests/test_state_checkpoint.py ..............
+tests/test_state_store.py ....................
+tests/test_telemetry.py s
+tests/test_tool_validation.py ................
+tests/test_tools.py ...........................................sINFO:     Started server process [90976]
+INFO:     Waiting for application startup.
+[11/05/26 00:52:53] INFO     StreamableHTTP       streamable_http_manager.py:164
+                             session manager                                    
+                             started                                            
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+[11/05/26 00:52:54] INFO     Created new          streamable_http_manager.py:330
+                             transport with                                     
+                             session ID:                                        
+                             0e5b9a06557f4167b4d0                               
+                             a193c1979768                                       
+INFO:     127.0.0.1:51549 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51550 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:51551 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51552 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+INFO:     127.0.0.1:51553 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+INFO:     127.0.0.1:51554 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+                    INFO     Terminating session:         streamable_http.py:831
+                             0e5b9a06557f4167b4d0a193c197                       
+                             9768                                               
+INFO:     127.0.0.1:51555 - "DELETE /mcp HTTP/1.1" 200 OK
+.INFO:     Started server process [90979]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:51560 - "GET /sse HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51561 - "POST /messages/?session_id=7691103f604e4d50a346341e5e8b2f31 HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:51561 - "POST /messages/?session_id=7691103f604e4d50a346341e5e8b2f31 HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:51561 - "POST /messages/?session_id=7691103f604e4d50a346341e5e8b2f31 HTTP/1.1" 202 Accepted
+[11/05/26 00:52:55] INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+INFO:     127.0.0.1:51561 - "POST /messages/?session_id=7691103f604e4d50a346341e5e8b2f31 HTTP/1.1" 202 Accepted
+                    INFO     Processing request of type            server.py:733
+                             ListToolsRequest                                   
+INFO:     127.0.0.1:51561 - "POST /messages/?session_id=7691103f604e4d50a346341e5e8b2f31 HTTP/1.1" 202 Accepted
+                    INFO     Processing request of type            server.py:733
+                             CallToolRequest                                    
+....................s.s.......
+tests/test_types.py ......
+tests/test_utils.py ............................................
+tests/test_vision_web_browser.py .......................
+
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/ldap3/utils/asn1.py:50
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/ldap3/utils/asn1.py:50: DeprecationWarning: tagMap is deprecated. Please use TAG_MAP instead.
+    from pyasn1.codec.ber.encoder import tagMap, typeMap, AbstractItemEncoder
+
+.venv/lib/python3.13/site-packages/ldap3/utils/asn1.py:50
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/ldap3/utils/asn1.py:50: DeprecationWarning: typeMap is deprecated. Please use TYPE_MAP instead.
+    from pyasn1.codec.ber.encoder import tagMap, typeMap, AbstractItemEncoder
+
+tests/test_agents.py: 6 warnings
+tests/test_default_tools.py: 3 warnings
+tests/test_local_python_executor.py: 39 warnings
+  /Users/jacken/time-geek/smolagents/src/smolagents/local_python_executor.py:1293: DeprecationWarning: The chararray class is deprecated and will be removed in a future release. Use an ndarray with a string or bytes dtype instead.
+    attr_value = getattr(raw_module, attr_name)
+
+tests/test_agents.py::TestToolCallingAgent::test_toolcalling_agent_passes_both_tools_and_managed_agents
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/_pytest/unraisableexception.py:63: PytestUnraisableExceptionWarning: Exception ignored in: <generator object MultiStepAgent._run_stream at 0x13cc4dfe0>
+  
+  Traceback (most recent call last):
+    File "/Users/jacken/time-geek/smolagents/tests/test_agents.py", line 1669, in test_toolcalling_agent_passes_both_tools_and_managed_agents
+      next(agent.run("Test task", stream=True))
+      ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  RuntimeError: generator ignored GeneratorExit
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+tests/test_models.py::TestModel::test_transformers_message_vl_no_tool
+tests/test_models.py::TestModel::test_transformers_message_vl_no_tool
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/torchvision/io/image.py:33: DeprecationWarning: The image decoding and encoding capabilities of TorchVision are deprecated since torchvision 0.29 and will be removed in a future release. They are superseded by the more complete decoders and encoders of TorchCodec (from torchcodec 0.16). Please see https://meta-pytorch.org/torchcodec/0.16/generated_examples/migration/torchvision_migration.html on how to migrate your code.
+    warnings.warn(_DEPRECATION_MSG, DeprecationWarning)
+
+tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[groq/llama-3.3-70b]
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:1511: UserWarning: Items 'device_code', 'user_code', 'verification_uri' on TypedDict class '_DeviceCode' are using the `ReadOnly` qualifier. Pydantic will not protect items from any mutation on dictionary instances.
+    warnings.warn(
+
+tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[groq/llama-3.3-70b]
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:1511: UserWarning: Items 'access_token', 'error' on TypedDict class '_AccessTokenPoll' are using the `ReadOnly` qualifier. Pydantic will not protect items from any mutation on dictionary instances.
+    warnings.warn(
+
+tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[groq/llama-3.3-70b]
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:1511: UserWarning: Items 'token', 'expires_at', 'endpoints' on TypedDict class '_CopilotTokenPayload' are using the `ReadOnly` qualifier. Pydantic will not protect items from any mutation on dictionary instances.
+    warnings.warn(
+
+tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[groq/llama-3.3-70b]
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:1511: UserWarning: Items 'device_code', 'user_code', 'verification_uri', 'expires_in', 'interval' on TypedDict class '_DeviceCodePayload' are using the `ReadOnly` qualifier. Pydantic will not protect items from any mutation on dictionary instances.
+    warnings.warn(
+
+tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[groq/llama-3.3-70b]
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:1511: UserWarning: Items 'access_token', 'error', 'error_description', 'interval' on TypedDict class '_AccessTokenPollPayload' are using the `ReadOnly` qualifier. Pydantic will not protect items from any mutation on dictionary instances.
+    warnings.warn(
+
+tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[groq/llama-3.3-70b]
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:1511: UserWarning: Item 'login' on TypedDict class '_GithubUserPayload' is using the `ReadOnly` qualifier. Pydantic will not protect items from any mutation on dictionary instances.
+    warnings.warn(
+
+tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[groq/llama-3.3-70b]
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:1511: UserWarning: Item 'api' on TypedDict class '_CopilotEndpointsPayload' is using the `ReadOnly` qualifier. Pydantic will not protect items from any mutation on dictionary instances.
+    warnings.warn(
+
+tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[groq/llama-3.3-70b]
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:1511: UserWarning: Item 'index' on TypedDict class 'ChatCompletionThinkingBlock' is using the `ReadOnly` qualifier. Pydantic will not protect items from any mutation on dictionary instances.
+    warnings.warn(
+
+tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[groq/llama-3.3-70b]
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:1511: UserWarning: Item 'index' on TypedDict class 'ChatCompletionRedactedThinkingBlock' is using the `ReadOnly` qualifier. Pydantic will not protect items from any mutation on dictionary instances.
+    warnings.warn(
+
+tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[groq/llama-3.3-70b]
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/pydantic/_internal/_generate_schema.py:1511: UserWarning: Item 'summary' on TypedDict class 'ChatCompletionReasoningItem' is using the `ReadOnly` qualifier. Pydantic will not protect items from any mutation on dictionary instances.
+    warnings.warn(
+
+tests/test_remote_executors.py::TestRemotePythonExecutor::test_send_variables_allow_pickle_handles_prefixed_payload
+  /Users/jacken/time-geek/smolagents/src/smolagents/remote_executors.py:125: FutureWarning: Falling back to insecure pickle serialization. This is a security risk and will be removed in a future version. Consider using only safe serializable types (primitives, lists, dicts, numpy arrays, PIL images, datetime objects, dataclasses).
+    serialized = SafeSerializer.dumps(variables, allow_pickle=self.allow_pickle)
+
+tests/test_serialization.py::TestPrefixHandling::test_pickle_prefix_with_allow_pickle
+  /Users/jacken/time-geek/smolagents/tests/test_serialization.py:801: FutureWarning: Falling back to insecure pickle serialization. This is a security risk and will be removed in a future version. Consider using only safe serializable types (primitives, lists, dicts, numpy arrays, PIL images, datetime objects, dataclasses).
+    serialized = SafeSerializer.dumps(obj, allow_pickle=True)
+
+tests/test_serialization.py::TestPrefixHandling::test_pickle_prefix_with_allow_pickle
+  /Users/jacken/time-geek/smolagents/tests/test_serialization.py:806: FutureWarning: Deserializing pickle data. This is a security risk if the data is untrusted.
+    result = SafeSerializer.loads(serialized, allow_pickle=True)
+
+tests/test_serialization.py::TestPrefixHandling::test_legacy_format_detection
+  /Users/jacken/time-geek/smolagents/tests/test_serialization.py:816: FutureWarning: Deserializing pickle data. This is a security risk if the data is untrusted.
+    result = SafeSerializer.loads(legacy_encoded, allow_pickle=True)
+
+tests/test_tools.py::TestToolCollection::test_integration_from_mcp_with_streamable_http
+  /Users/jacken/.local/share/mise/installs/python/3.13.13/lib/python3.13/contextlib.py:109: DeprecationWarning: Use `streamable_http_client` instead.
+    self.gen = func(*args, **kwds)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+============================== slowest durations ===============================
+9.58s call     tests/test_models.py::TestModel::test_transformers_message_vl_no_tool
+6.55s call     tests/test_agents.py::TestAgent::test_transformers_toolcalling_agent
+3.19s call     tests/test_import.py::test_import_smolagents_without_extras
+3.01s call     tests/test_local_python_executor.py::TestTimeout::test_timeout_works_in_thread
+3.01s call     tests/test_local_python_executor.py::TestTimeout::test_evaluate_python_code_with_timeout_raises
+2.40s call     tests/test_local_python_executor.py::TestEvaluatePythonCode::test_can_import_sklearn_if_explicitly_authorized
+2.22s call     tests/test_models.py::TestModel::test_transformers_message_no_tool
+2.21s call     tests/test_default_tools.py::test_wikipedia_search[en-summary-HTML-Python_(programming_language)]
+2.06s call     tests/test_cli.py::test_load_model_litellm_model
+2.01s call     tests/test_local_python_executor.py::TestTimeout::test_longer_timeout_value
+2.01s call     tests/test_local_python_executor.py::TestTimeout::test_local_executor_custom_timeout
+2.01s call     tests/test_default_tools.py::TestPythonInterpreterTool::test_custom_timeout
+2.01s call     tests/test_local_python_executor.py::TestTimeout::test_custom_timeout_value
+2.00s call     tests/test_default_tools.py::test_wikipedia_search[es-text-WIKI-Python_(lenguaje_de_programaci\xf3n)]
+2.00s call     tests/test_local_python_executor.py::TestTimeout::test_timeout_decorator_raises_error_when_exceeded
+1.77s call     tests/test_default_tools.py::test_wikipedia_search[en-text-WIKI-Python_(programming_language)]
+1.74s call     tests/test_default_tools.py::test_wikipedia_search[es-summary-HTML-Python_(lenguaje_de_programaci\xf3n)]
+1.36s call     tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[mistral/mistral-tiny]
+1.32s call     tests/test_agents.py::TestAgent::test_fake_code_agent
+1.17s call     tests/test_models.py::TestModel::test_get_mlx_message_no_tool
+1.05s call     tests/test_tools.py::TestToolCollection::test_integration_from_mcp_with_sse
+1.05s call     tests/test_tools.py::TestToolCollection::test_integration_from_mcp_with_streamable_http
+0.98s call     tests/test_default_tools.py::DefaultToolTests::test_visit_webpage
+0.82s call     tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[groq/llama-3.3-70b]
+0.71s call     tests/test_models.py::TestLiteLLMModel::test_retry_on_rate_limit_error
+0.70s call     tests/test_mcp_client.py::test_multiple_servers
+0.68s call     tests/test_local_python_executor.py::TestEvaluatePythonCode::test_can_import_scipy_if_explicitly_authorized
+0.56s call     tests/test_models.py::TestModel::test_get_mlx_message_tricky_stop_sequence
+0.55s call     tests/test_gradio_ui.py::GradioUITester::test_upload_file_custom_types
+0.51s call     tests/test_local_python_executor.py::TestTimeout::test_local_executor_disabled_timeout
+0.51s call     tests/test_local_python_executor.py::TestTimeout::test_disabled_timeout
+0.51s call     tests/test_default_tools.py::TestPythonInterpreterTool::test_disabled_timeout
+0.43s call     tests/test_mcp_client.py::test_mcp_client_with_syntax
+0.35s call     tests/test_mcp_client.py::test_mcp_client_try_finally_syntax
+0.35s call     tests/test_mcp_client.py::test_mcp_client_with_structured_output
+0.35s call     tests/test_mcp_client.py::test_mcp_client_without_structured_output
+0.32s setup    tests/test_utils.py::test_get_source_ipython[test_func-def test_func():\n    return 42]
+0.30s call     tests/test_remote_executors.py::TestBlaxelExecutorUnit::test_blaxel_executor_instantiation_with_blaxel_sdk
+0.29s teardown tests/test_utils.py::test_get_source_ipython[test_func-def test_func():\n    return 42]
+0.29s setup    tests/test_utils.py::test_get_source_ipython_errors_empty_cells
+0.29s teardown tests/test_utils.py::test_get_source_ipython_errors_definition_not_found
+0.28s teardown tests/test_utils.py::test_get_source_ipython[TestClass-class TestClass:\n    ...]
+0.28s setup    tests/test_utils.py::test_get_source_ipython_errors_definition_not_found
+0.28s setup    tests/test_utils.py::test_get_source_ipython[TestClass-class TestClass:\n    ...]
+0.28s teardown tests/test_utils.py::test_get_source_ipython_errors_empty_cells
+0.16s call     tests/test_agents.py::TestAgent::test_init_agent_with_different_toolsets
+0.16s call     tests/test_sandbox.py::test_command_timeout_and_output_limit
+0.14s call     tests/test_agents.py::TestToolCallingAgent::test_toolcalling_agent_stream_logs_multiple_tool_calls_observations
+0.12s call     tests/test_local_python_executor.py::TestEvaluatePythonCode::test_imports
+0.12s call     tests/test_coding_tools.py::test_agent_pauses_for_approval_and_resumes_without_duplicate_write
+0.11s call     tests/test_local_python_executor.py::TestTimeout::test_timeout_decorator_completes_within_limit
+0.10s call     tests/test_state_store.py::test_workspace_info_records_environment_and_files
+0.08s call     tests/test_agents.py::TestMultiAgents::test_multiagents_save
+0.07s call     tests/test_agents.py::TestAgent::test_toolcalling_agent_handles_image_tool_outputs
+0.06s call     tests/test_sandbox.py::test_command_whitelist_and_path_validation
+0.06s call     tests/test_state_store.py::test_agent_stops_with_budget_exceeded_stop_reason
+0.06s call     tests/test_state_store.py::test_tool_calling_agent_persists_interrupted_state
+0.06s call     tests/test_state_store.py::test_tool_calling_agent_persists_max_steps_state
+0.06s call     tests/test_state_store.py::test_tool_calling_agent_persists_completed_state
+0.05s call     tests/test_harness_loop.py::test_harness_runs_sandbox_tools
+0.05s call     tests/test_harness_loop.py::test_harness_runs_task_and_verifies_completion
+0.05s call     tests/test_harness_loop.py::test_harness_executes_tool_through_gate
+0.05s call     tests/test_state_store.py::test_record_budget_and_pending_approvals
+0.05s call     tests/test_state_store.py::test_record_plan_and_action_evidence
+0.05s call     tests/test_state_store.py::test_finish_accepts_explicit_stop_reason
+0.05s call     tests/test_state_store.py::test_finish_sets_exit_code[failed-1]
+0.05s call     tests/test_harness_loop.py::test_harness_fails_when_completion_conditions_fail
+0.05s call     tests/test_harness_loop.py::test_harness_links_audit_events_to_checkpoint_run_id
+0.05s call     tests/test_state_store.py::test_save_and_load_roundtrip
+0.05s call     tests/test_state_store.py::test_start_writes_running_state_with_task_info
+0.05s call     tests/test_state_store.py::test_finish_records_stop_reason_budget_and_pending_approvals
+0.05s call     tests/test_state_store.py::test_start_records_run_id_and_budget
+0.05s call     tests/test_state_store.py::test_finish_sets_exit_code[interrupted-130]
+0.05s call     tests/test_harness_loop.py::test_harness_persists_state_variables_in_checkpoint
+0.05s call     tests/test_state_store.py::test_finish_sets_exit_code[max_steps-2]
+0.05s call     tests/test_state_store.py::test_finish_sets_exit_code[completed-0]
+0.05s call     tests/test_state_store.py::test_record_action_marks_failed_step
+0.05s call     tests/test_harness_loop.py::test_harness_skips_completion_for_unknown_task
+0.05s call     tests/test_harness_loop.py::test_harness_marks_run_failed_when_executor_raises
+0.05s call     tests/test_harness_loop.py::test_harness_rejects_concurrent_runs
+0.05s call     tests/test_harness_loop.py::test_harness_gate_denies_tool
+0.05s call     tests/test_harness_loop.py::test_harness_risk_policy_waits_for_approval_and_audits
+0.05s call     tests/test_harness_loop.py::test_harness_budget_exceeded_sets_stop_reason
+0.04s call     tests/test_tools.py::test_launch_gradio_demo_does_not_raise[boolean_default_tool_class]
+0.04s call     tests/test_sandbox.py::test_os_isolation_backend_is_selected
+0.03s call     tests/test_local_python_executor.py::TestLocalPythonExecutorSecurity::test_vulnerability_via_dunder_call[code4-additional_allowed_dunder_methods4-None]
+0.03s call     tests/test_coding_tools.py::test_run_test_uses_the_configured_command_only
+0.03s call     tests/test_sandbox.py::test_default_sandbox_tools_route_through_sandbox
+0.03s call     tests/test_sandbox.py::test_command_stdin_and_environment_validation
+0.03s call     tests/test_sandbox.py::test_workspace_root_is_writable_and_survives_destroy
+0.03s call     tests/test_local_python_executor.py::TestEvaluatePythonCode::test_pandas
+0.03s call     tests/test_agents.py::TestAgent::test_replay_shows_logs
+0.03s call     tests/test_agents.py::TestAgent::test_module_imports_get_baked_in_system_prompt
+0.02s call     tests/test_agents.py::TestCodeAgent::test_missing_import_triggers_advice_in_error_log
+0.02s call     tests/test_local_python_executor.py::TestEvaluatePythonCode::test_additional_imports
+0.02s call     tests/test_agents.py::TestAgent::test_final_answer_checks
+0.02s call     tests/test_agents.py::TestAgent::test_final_answer_checks_with_agent_access
+0.02s call     tests/test_agents.py::TestMultiAgents::test_multiagents
+0.02s call     tests/test_agents.py::TestCodeAgent::test_errors_logging
+0.02s call     tests/test_local_python_executor.py::TestLocalPythonExecutorSecurity::test_vulnerability_via_sys[additional_authorized_imports2-None]
+0.02s call     tests/test_local_python_executor.py::TestLocalPythonExecutorSecurity::test_vulnerability_via_importlib[additional_authorized_imports1-None]
+0.02s call     tests/test_serialization.py::TestPerformance::test_large_list
+0.02s call     tests/test_types.py::TestAgentImage::test_from_image
+0.02s call     tests/test_local_python_executor.py::TestLocalPythonExecutorSecurity::test_vulnerability_builtins_via_sys[additional_authorized_imports4-additional_tools4-None]
+0.02s call     tests/test_models.py::TestLiteLLMModel::test_call_different_providers_without_key[cerebras/llama-3.3-70b]
+0.01s call     tests/test_agents.py::TestAgent::test_agent_description_gets_correctly_inserted_in_system_prompt
+0.01s call     tests/test_agents.py::TestAgent::test_fails_max_steps
+0.01s call     tests/test_state_checkpoint.py::test_process_restart_resumes_without_duplicate_steps_or_reset_counters
+0.01s call     tests/test_state_checkpoint.py::test_resume_refuses_when_workspace_changed
+0.01s call     tests/test_agents.py::TestMultiStepAgent::test_logs_display_thoughts_even_if_error
+0.01s call     tests/test_agents.py::TestMultiStepAgent::test_multiagent_to_dict_from_dict_roundtrip
+0.01s call     tests/test_default_tools.py::TestSpeechToTextTool::test_new_instance
+0.01s call     tests/test_agents.py::TestAgent::test_tool_descriptions_get_baked_in_system_prompt
+0.01s call     tests/test_agents.py::TestAgent::test_reset_conversations
+0.01s call     tests/test_models.py::TestLiteLLMRouterModel::test_flatten_messages_as_text[llama-3.3-70b-False]
+0.01s call     tests/test_state_checkpoint.py::test_checkpoint_contains_run_step_plan_evidence_budget_and_pending_approvals
+0.01s call     tests/test_agents.py::TestAgent::test_function_persistence_across_steps
+0.01s call     tests/test_agents.py::TestToolCallingAgent::test_toolcalling_agent_api
+0.01s call     tests/test_agents.py::TestCodeAgent::test_code_agent_instructions
+0.01s call     tests/test_agents.py::TestAgent::test_planning_step_with_injected_memory
+0.01s call     tests/test_completion.py::test_fix_tests_rejects_modified_existing_test
+0.01s call     tests/test_agents.py::TestCodeAgent::test_local_python_executor_with_custom_functions
+0.01s setup    tests/test_agents.py::TestAgent::test_toolcalling_agent_handles_image_tool_outputs
+0.01s setup    tests/test_final_answer.py::TestFinalAnswerTool::test_agent_type_output
+0.01s call     tests/test_agents.py::TestCodeAgent::test_code_agent_image_output
+0.01s call     tests/test_monitoring.py::MonitoringTester::test_streaming_with_agent_error
+0.01s call     tests/test_monitoring.py::MonitoringTester::test_streaming_agent_text_output
+0.01s call     tests/test_types.py::TestAgentImage::test_from_string
+0.01s call     tests/test_agents.py::TestMultiStepAgent::test_planning_step[1-expected_messages_list0]
+0.01s call     tests/test_state_checkpoint.py::test_tools_pending_marks_unknown_result_without_replay
+0.01s call     tests/test_agents.py::TestAgent::test_additional_args_added_to_task
+0.01s call     tests/test_agents.py::TestMultiStepAgent::test_planning_step[2-expected_messages_list1]
+0.01s call     tests/test_agents.py::TestCodeAgent::test_errors_show_offending_line_and_error
+0.01s call     tests/test_agents.py::TestRunResult::test_no_token_usage[CodeAgent]
+0.01s call     tests/test_agents.py::TestMultiStepAgent::test_step_number
+0.01s call     tests/test_monitoring.py::MonitoringTester::test_code_agent_metrics_generation_error
+0.01s call     tests/test_monitoring.py::MonitoringTester::test_code_agent_metrics_max_steps
+0.01s call     tests/test_agents.py::TestCodeAgent::test_syntax_error_show_offending_lines
+0.01s call     tests/test_agents.py::TestCodeAgent::test_error_saves_previous_print_outputs
+0.01s call     tests/test_agents.py::TestCodeAgent::test_end_code_appending
+0.01s call     tests/test_agents.py::TestAgent::test_code_nontrivial_final_answer_works
+0.01s call     tests/test_agents.py::TestMultiStepAgent::test_interrupt
+0.01s call     tests/test_agents.py::TestCodeAgent::test_custom_final_answer_with_custom_inputs
+0.01s call     tests/test_monitoring.py::test_code_agent_metrics[CodeAgent]
+0.01s call     tests/test_agents.py::TestAgent::test_generation_errors_are_raised
+0.01s call     tests/test_local_python_executor.py::TestLocalPythonExecutorSecurity::test_vulnerability_via_submodules[import pandas; pandas.io-additional_authorized_imports12-None]
+0.01s call     tests/test_state_checkpoint.py::test_action_started_in_flight_is_retried_safely
+0.01s call     tests/test_agents.py::TestToolCallingAgent::test_toolcalling_agent_api_misformatted_output
+0.01s call     tests/test_agents.py::TestMultiStepAgent::test_from_dict_invalid_agent_class
+0.01s call     tests/test_default_tools.py::TestPythonInterpreterTool::test_imports_work
+0.01s call     tests/test_monitoring.py::MonitoringTester::test_streaming_agent_image_output
+0.01s call     tests/test_agents.py::TestCodeAgent::test_from_dict
+0.01s call     tests/test_agents.py::TestCodeAgent::test_call_with_provide_run_summary[True]
+0.01s call     tests/test_agents.py::TestMultiStepAgent::test_provide_final_answer[expected_messages_list0]
+0.01s call     tests/test_agents.py::TestCodeAgent::test_call_with_provide_run_summary[False]
+0.01s call     tests/test_agents.py::TestAgent::test_init_managed_agent
+0.01s call     tests/test_agents.py::TestToolCallingAgent::test_toolcalling_agent_passes_both_tools_and_managed_agents
+0.01s call     tests/test_agents.py::TestAgent::test_fake_toolcalling_agent
+
+(3237 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========== 1087 passed, 66 skipped, 68 warnings in 71.66s (0:01:11) ===========

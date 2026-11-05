@@ -1,0 +1,30 @@
+{
+  "task": "understand",
+  "passed": true,
+  "checks": [
+    {
+      "name": "deliverable_present",
+      "passed": true,
+      "skipped": false,
+      "detail": "artifacts/login-flow.md exists and is non-empty"
+    },
+    {
+      "name": "references_valid",
+      "passed": true,
+      "skipped": false,
+      "detail": "87 citations across 11 files all resolve"
+    },
+    {
+      "name": "production_notes",
+      "passed": true,
+      "skipped": false,
+      "detail": "found '不能照搬到生产'"
+    },
+    {
+      "name": "write_scope",
+      "passed": true,
+      "skipped": false,
+      "detail": "only artifacts/login-flow.md was written"
+    }
+  ]
+}

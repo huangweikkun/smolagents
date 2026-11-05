@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "task": {
+    "task": "understand",
+    "agent_class": "Harness",
+    "agent_name": "harness",
+    "model_id": "record-dummy",
+    "max_steps": 10,
+    "planning_interval": null,
+    "additional_args": {
+      "task_name": "understand"
+    }
+  },
+  "status": "completed",
+  "exit_code": 0,
+  "run_id": "cea0da32733e411e9d991dffc7f7c46e",
+  "stop_reason": "completed",
+  "started_at": "2026-11-04T13:48:03.527600+00:00",
+  "finished_at": "2026-11-04T13:48:03.534577+00:00",
+  "error": null,
+  "final_output": "run-record-complete",
+  "budget": null,
+  "pending_approvals": [],
+  "plans": [],
+  "evidence": [],
+  "workspace": {
+    "cwd": "/Users/jacken/time-geek/smolagents",
+    "platform": {
+      "system": "Darwin",
+      "release": "25.5.0",
+      "machine": "arm64"
+    },
+    "python": {
+      "version": "3.13.13",
+      "executable": "/Users/jacken/time-geek/smolagents/.venv/bin/python3"
+    },
+    "git": {
+      "branch": "main",
+      "commit": "ec7c049"
+    },
+    "workspace_dir": "/Users/jacken/time-geek/smolagents/samples/1_login_demo",
+    "files": [
+      {
+        "relative_path": ".gitignore",
+        "size_bytes": 30
+      },
+      {
+        "relative_path": "README.md",
+        "size_bytes": 410
+      },
+      {
+        "relative_path": "artifacts/login-flow.md",
+        "size_bytes": 8591
+      },
+      {
+        "relative_path": "package-lock.json",
+        "size_bytes": 61002
+      },
+      {
+        "relative_path": "package.json",
+        "size_bytes": 492
+      },
+      {
+        "relative_path": "src/app.ts",
+        "size_bytes": 393
+      },
+      {
+        "relative_path": "src/db/database.ts",
+        "size_bytes": 928
+      },
+      {
+        "relative_path": "src/middleware/auth-middleware.ts",
+        "size_bytes": 638
+      },
+      {
+        "relative_path": "src/repositories/user-repository.ts",
+        "size_bytes": 354
+      },
+      {
+        "relative_path": "src/routes/login.ts",
+        "size_bytes": 703
+      },
+      {
+        "relative_path": "src/routes/profile.ts",
+        "size_bytes": 333
+      },
+      {
+        "relative_path": "src/server.ts",
+        "size_bytes": 177
+      },
+      {
+        "relative_path": "src/services/auth-service.ts",
+        "size_bytes": 917
+      },
+      {
+        "relative_path": "src/types/user.ts",
+        "size_bytes": 347
+      },
+      {
+        "relative_path": "src/utils/password.ts",
+        "size_bytes": 248
+      },
+      {
+        "relative_path": "src/utils/token.ts",
+        "size_bytes": 597
+      },
+      {
+        "relative_path": "tsconfig.json",
+        "size_bytes": 315
+      }
+    ]
+  },
+  "messages": []
+}

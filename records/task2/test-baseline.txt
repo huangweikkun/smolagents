@@ -1,0 +1,85 @@
+exit=1
+
+
+> bug-fix-demo@1.0.0 test
+> node --import tsx --test "tests/**/*.test.ts"
+
+✔ 登录成功后返回会话令牌 (0.372292ms)
+✔ 密码错误时登录失败 (0.188167ms)
+✔ 到期前仍然有效 (1.257916ms)
+✖ 到期时刻视为已过期 (0.74275ms)
+✖ 到期后立即失效 (0.126458ms)
+✖ 会话在过期时刻之后立即失效 (1.491042ms)
+✔ 会话在过期时刻之前仍然有效 (0.071583ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 4
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 137.356
+
+✖ failing tests:
+
+test at tests/session-boundary.test.ts:1:335
+✖ 到期时刻视为已过期 (0.74275ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (/Users/jacken/time-geek/smolagents/records/task2/workspace/tests/session-boundary.test.ts:15:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/session-boundary.test.ts:1:500
+✖ 到期后立即失效 (0.126458ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (/Users/jacken/time-geek/smolagents/records/task2/workspace/tests/session-boundary.test.ts:20:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/session-policy.test.ts:1:128
+✖ 会话在过期时刻之后立即失效 (1.491042ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (/Users/jacken/time-geek/smolagents/records/task2/workspace/tests/session-policy.test.ts:10:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.start (node:internal/test_runner/test:1177:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+

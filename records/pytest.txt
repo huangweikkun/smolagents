@@ -1,0 +1,74 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.13, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/jacken/time-geek/smolagents
+configfile: pyproject.toml
+plugins: datadir-1.9.0, platformdirs-4.14.4, timeout-2.4.0, arize-phoenix-client-3.6.0, anyio-4.16.0
+collected 131 items
+
+tests/test_coding_tools.py ...
+tests/test_state_store.py ....................
+tests/test_state_checkpoint.py ..............
+tests/test_gate.py ................
+tests/test_audit.py ........................
+tests/test_sandbox.py ...............
+tests/test_harness_loop.py ..................
+tests/test_completion.py .....................
+
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/ldap3/utils/asn1.py:50
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/ldap3/utils/asn1.py:50: DeprecationWarning: tagMap is deprecated. Please use TAG_MAP instead.
+    from pyasn1.codec.ber.encoder import tagMap, typeMap, AbstractItemEncoder
+
+.venv/lib/python3.13/site-packages/ldap3/utils/asn1.py:50
+  /Users/jacken/time-geek/smolagents/.venv/lib/python3.13/site-packages/ldap3/utils/asn1.py:50: DeprecationWarning: typeMap is deprecated. Please use TYPE_MAP instead.
+    from pyasn1.codec.ber.encoder import tagMap, typeMap, AbstractItemEncoder
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+============================== slowest durations ===============================
+0.13s call     tests/test_sandbox.py::test_command_timeout_and_output_limit
+0.10s call     tests/test_coding_tools.py::test_agent_pauses_for_approval_and_resumes_without_duplicate_write
+0.07s call     tests/test_state_store.py::test_workspace_info_records_environment_and_files
+0.05s call     tests/test_sandbox.py::test_command_whitelist_and_path_validation
+0.05s call     tests/test_state_checkpoint.py::test_memory_step_serialization_roundtrip
+0.04s call     tests/test_harness_loop.py::test_harness_runs_sandbox_tools
+0.04s call     tests/test_harness_loop.py::test_harness_links_audit_events_to_checkpoint_run_id
+0.04s call     tests/test_harness_loop.py::test_harness_executes_tool_through_gate
+0.04s call     tests/test_state_store.py::test_tool_calling_agent_persists_max_steps_state
+0.04s call     tests/test_state_store.py::test_tool_calling_agent_persists_interrupted_state
+0.04s call     tests/test_harness_loop.py::test_harness_runs_task_and_verifies_completion
+0.04s call     tests/test_harness_loop.py::test_harness_persists_state_variables_in_checkpoint
+0.04s call     tests/test_harness_loop.py::test_harness_marks_run_failed_when_executor_raises
+0.04s call     tests/test_harness_loop.py::test_harness_fails_when_completion_conditions_fail
+0.04s call     tests/test_state_store.py::test_agent_stops_with_budget_exceeded_stop_reason
+0.04s call     tests/test_state_store.py::test_tool_calling_agent_persists_completed_state
+0.04s call     tests/test_harness_loop.py::test_harness_risk_policy_waits_for_approval_and_audits
+0.04s call     tests/test_harness_loop.py::test_harness_skips_completion_for_unknown_task
+0.04s call     tests/test_harness_loop.py::test_harness_gate_denies_tool
+0.04s call     tests/test_harness_loop.py::test_harness_budget_exceeded_sets_stop_reason
+0.04s call     tests/test_harness_loop.py::test_harness_rejects_concurrent_runs
+0.04s call     tests/test_state_store.py::test_finish_sets_exit_code[failed-1]
+0.04s call     tests/test_state_store.py::test_start_writes_running_state_with_task_info
+0.04s call     tests/test_state_store.py::test_record_plan_and_action_evidence
+0.04s call     tests/test_state_store.py::test_finish_sets_exit_code[interrupted-130]
+0.04s call     tests/test_state_store.py::test_finish_sets_exit_code[max_steps-2]
+0.04s call     tests/test_state_store.py::test_finish_sets_exit_code[completed-0]
+0.04s call     tests/test_state_store.py::test_record_action_marks_failed_step
+0.04s call     tests/test_state_store.py::test_save_and_load_roundtrip
+0.04s call     tests/test_state_store.py::test_record_budget_and_pending_approvals
+0.04s call     tests/test_state_store.py::test_finish_accepts_explicit_stop_reason
+0.04s call     tests/test_state_store.py::test_finish_records_stop_reason_budget_and_pending_approvals
+0.04s call     tests/test_state_store.py::test_start_records_run_id_and_budget
+0.03s call     tests/test_sandbox.py::test_os_isolation_backend_is_selected
+0.02s call     tests/test_coding_tools.py::test_run_test_uses_the_configured_command_only
+0.02s call     tests/test_sandbox.py::test_default_sandbox_tools_route_through_sandbox
+0.02s call     tests/test_sandbox.py::test_command_stdin_and_environment_validation
+0.02s call     tests/test_sandbox.py::test_workspace_root_is_writable_and_survives_destroy
+0.01s call     tests/test_state_checkpoint.py::test_process_restart_resumes_without_duplicate_steps_or_reset_counters
+0.01s call     tests/test_state_checkpoint.py::test_resume_refuses_when_workspace_changed
+0.01s call     tests/test_state_checkpoint.py::test_checkpoint_contains_run_step_plan_evidence_budget_and_pending_approvals
+0.01s call     tests/test_state_checkpoint.py::test_tools_pending_marks_unknown_result_without_replay
+0.01s call     tests/test_state_checkpoint.py::test_action_started_in_flight_is_retried_safely
+0.01s call     tests/test_completion.py::test_verifier_dispatches_to_registered_task
+
+(349 durations < 0.005s hidden.  Use -vv to show these durations.)
+======================= 131 passed, 2 warnings in 2.16s ========================

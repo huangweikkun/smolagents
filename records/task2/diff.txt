@@ -1,0 +1,14 @@
+diff --git a/src/auth/session-policy.ts b/src/auth/session-policy.ts
+index 000f085..9408c8f 100644
+--- a/src/auth/session-policy.ts
++++ b/src/auth/session-policy.ts
+@@ -3,7 +3,6 @@ export interface ExpiringSession {
+ }
+ 
+ export function isSessionExpired(session: ExpiringSession, now: Date): boolean {
+-  const expiresOn = session.expiresAt.slice(0, 10);
+-  const currentDay = now.toISOString().slice(0, 10);
+-  return expiresOn < currentDay;
++  const expiresAtMs = Date.parse(session.expiresAt);
++  return now.getTime() >= expiresAtMs;
+ }

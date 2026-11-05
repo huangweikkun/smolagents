@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "records": [
+    {
+      "record_id": "dbc555d9af414dbeb7161b6f54d649f6",
+      "subject": "tool",
+      "operation_type": "edit_file",
+      "content": {
+        "path": "src/auth/session-policy.ts",
+        "old_string": "  const expiresOn = session.expiresAt.slice(0, 10);\n  const currentDay = now.toISOString().slice(0, 10);\n  return expiresOn < currentDay;",
+        "new_string": "  const expiresAtMs = Date.parse(session.expiresAt);\n  return now.getTime() >= expiresAtMs;"
+      },
+      "requested_at": "2026-11-04T16:56:13.369086+00:00",
+      "applicant": "gate",
+      "updated_at": "2026-11-04T16:56:13.381384+00:00",
+      "status": "approved",
+      "approver": "maintainer-demo",
+      "comment": "approved task-two write: src/auth/session-policy.ts",
+      "reason": null,
+      "decided_at": "2026-11-04T16:56:13.381384+00:00",
+      "metadata": {
+        "tool_call_id": "call_00_7vySTNGiSWnVhIzVfqTe1236",
+        "run_id": "d5b9b20f33364ddb87f0b85a7de4ce70",
+        "risk": "high"
+      }
+    }
+  ]
+}

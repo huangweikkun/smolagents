@@ -130,6 +130,19 @@ def test_harness_runs_task_and_verifies_completion(tmp_path):
     assert state.final_output == "done"
 
 
+def test_harness_can_skip_its_own_state_and_checkpoint_when_executor_persists(tmp_path):
+    harness = _harness(tmp_path, _understand_repo(tmp_path), persist_state=False, persist_checkpoint=False)
+
+    outcome = harness.run(lambda context: "done")
+
+    assert outcome.succeeded
+    assert outcome.status is ExecutionStatus.COMPLETED
+    assert outcome.stop_reason == "completed"
+    assert outcome.checkpoint_path is None
+    assert not harness.state_path.exists()
+    assert list((tmp_path / "runtime" / "checkpoints").glob("*.json")) == []
+
+
 def test_harness_fails_when_completion_conditions_fail(tmp_path):
     harness = _harness(tmp_path, _understand_repo(tmp_path, document=None))
 
